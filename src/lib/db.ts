@@ -3,13 +3,29 @@ import path from "path";
 import { MenuItem, Order, OrderStatus, PaymentStatus } from "@/types/cafe";
 import { INITIAL_MENU_ITEMS } from "./initialData";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const IS_VERCEL = process.env.VERCEL === "1";
+const DATA_DIR = IS_VERCEL ? path.join("/tmp", "qallmi_data") : path.join(process.cwd(), "data");
 const MENU_FILE = path.join(DATA_DIR, "menu.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 
 function ensureDirectory() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    // Copy initial data to /tmp if running on Vercel
+    if (IS_VERCEL) {
+      const srcMenu = path.join(process.cwd(), "data", "menu.json");
+      const srcOrders = path.join(process.cwd(), "data", "orders.json");
+      if (!fs.existsSync(MENU_FILE) && fs.existsSync(srcMenu)) {
+        fs.copyFileSync(srcMenu, MENU_FILE);
+      }
+      if (!fs.existsSync(ORDERS_FILE) && fs.existsSync(srcOrders)) {
+        fs.copyFileSync(srcOrders, ORDERS_FILE);
+      }
+    }
+  } catch (err) {
+    // Graceful fallback to memory
   }
 }
 
