@@ -4,12 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "QALBI Cafe | Tea, Coffee & Fast Food",
   description: "Browse our tea, coffee, gobi, fried rice and fast food menu. Order directly from your table and pay at the counter.",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "QALBI Cafe",
-  },
   icons: {
     icon: "/favicon.ico",
   },

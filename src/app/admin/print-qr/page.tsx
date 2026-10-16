@@ -180,7 +180,7 @@ function PrintQRContent() {
                   Scan with Camera to Order
                 </h4>
                 <p className="text-[11px] text-[#493126] font-medium max-w-xs">
-                  Browse live menu • Instant table ordering • Pay at counter
+                  No app needed • Instant website menu • Pay at counter
                 </p>
               </div>
 
