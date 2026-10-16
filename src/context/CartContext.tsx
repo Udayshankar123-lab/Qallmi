@@ -164,8 +164,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     (sum, item) => sum + item.unitPrice * item.quantity,
     0
   );
-  const tax = Math.round(subtotal * 0.05); // 5% GST
-  const total = subtotal + tax;
+  const tax = 0; // No GST
+  const total = subtotal;
 
   return (
     <CartContext.Provider

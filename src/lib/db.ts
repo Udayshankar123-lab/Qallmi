@@ -1,12 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { MenuItem, Order, OrderStatus, PaymentStatus } from "@/types/cafe";
-import { INITIAL_MENU_ITEMS } from "./initialData";
+import { MenuItem, Order, OrderStatus, PaymentStatus, Category } from "@/types/cafe";
+import { INITIAL_MENU_ITEMS, INITIAL_CATEGORIES } from "./initialData";
 
 const IS_VERCEL = process.env.VERCEL === "1";
-const DATA_DIR = IS_VERCEL ? path.join("/tmp", "qallmi_data") : path.join(process.cwd(), "data");
+const DATA_DIR = IS_VERCEL ? path.join("/tmp", "qalbi_data") : path.join(process.cwd(), "data");
 const MENU_FILE = path.join(DATA_DIR, "menu.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
+const CATEGORIES_FILE = path.join(DATA_DIR, "categories.json");
 
 function ensureDirectory() {
   try {
@@ -17,11 +18,15 @@ function ensureDirectory() {
     if (IS_VERCEL) {
       const srcMenu = path.join(process.cwd(), "data", "menu.json");
       const srcOrders = path.join(process.cwd(), "data", "orders.json");
+      const srcCategories = path.join(process.cwd(), "data", "categories.json");
       if (!fs.existsSync(MENU_FILE) && fs.existsSync(srcMenu)) {
         fs.copyFileSync(srcMenu, MENU_FILE);
       }
       if (!fs.existsSync(ORDERS_FILE) && fs.existsSync(srcOrders)) {
         fs.copyFileSync(srcOrders, ORDERS_FILE);
+      }
+      if (!fs.existsSync(CATEGORIES_FILE) && fs.existsSync(srcCategories)) {
+        fs.copyFileSync(srcCategories, CATEGORIES_FILE);
       }
     }
   } catch (err) {
@@ -30,6 +35,7 @@ function ensureDirectory() {
 }
 
 // In-memory fallback if filesystem write is restricted
+let memoryCategories: Category[] = [...INITIAL_CATEGORIES];
 let memoryMenu: MenuItem[] = [...INITIAL_MENU_ITEMS];
 let memoryOrders: Order[] = [
   {
@@ -175,6 +181,73 @@ export function deleteMenuItem(id: string): boolean {
     return true;
   } catch (err) {
     memoryMenu = memoryMenu.filter((i) => i.id !== id);
+    return true;
+  }
+}
+
+export function clearMenuItems(): boolean {
+  try {
+    ensureDirectory();
+    fs.writeFileSync(MENU_FILE, JSON.stringify([], null, 2));
+    memoryMenu = [];
+    return true;
+  } catch (err) {
+    memoryMenu = [];
+    return true;
+  }
+}
+
+export function getCategories(): Category[] {
+  try {
+    ensureDirectory();
+    if (fs.existsSync(CATEGORIES_FILE)) {
+      const data = fs.readFileSync(CATEGORIES_FILE, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+    // Fallback to initial
+    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(INITIAL_CATEGORIES, null, 2));
+    return INITIAL_CATEGORIES;
+  } catch (err) {
+    return memoryCategories;
+  }
+}
+
+export function saveCategory(category: Category): Category {
+  try {
+    ensureDirectory();
+    const categories = getCategories();
+    const index = categories.findIndex((c) => c.id === category.id);
+    if (index >= 0) {
+      categories[index] = category;
+    } else {
+      categories.push(category);
+    }
+    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2));
+    memoryCategories = categories;
+    return category;
+  } catch (err) {
+    const index = memoryCategories.findIndex((c) => c.id === category.id);
+    if (index >= 0) {
+      memoryCategories[index] = category;
+    } else {
+      memoryCategories.push(category);
+    }
+    return category;
+  }
+}
+
+export function deleteCategory(id: string): boolean {
+  if (id === "all") return false; // Prevent deleting "all"
+  try {
+    const categories = getCategories().filter((c) => c.id !== id);
+    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2));
+    memoryCategories = categories;
+    return true;
+  } catch (err) {
+    memoryCategories = memoryCategories.filter((c) => c.id !== id);
     return true;
   }
 }

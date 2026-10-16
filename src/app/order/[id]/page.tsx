@@ -74,7 +74,7 @@ export default function OrderTrackingPage({
     {
       key: "completed",
       label: "Delivered & Enjoyed",
-      desc: "Bon appétit at Qallmi Cafe",
+      desc: "Bon appétit at QALBI Cafe",
       icon: <UtensilsCrossed className="w-4 h-4" />,
       color: "from-teal-600 to-cyan-600",
     },
@@ -137,7 +137,7 @@ export default function OrderTrackingPage({
           </Link>
           <div className="flex items-center gap-1.5 text-xs font-serif font-black text-[#F7F2EA]">
             <Coffee className="w-4 h-4 text-[#C6A46C]" />
-            <span>QALLMI CAFE</span>
+            <span>QALBI CAFE</span>
           </div>
         </div>
       </header>

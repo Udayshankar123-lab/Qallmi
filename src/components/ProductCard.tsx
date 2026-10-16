@@ -2,7 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
-import { Plus, Minus, Sparkles, SlidersHorizontal, Egg, Leaf } from "lucide-react";
+import { Plus, Minus, Sparkles, Egg, Leaf } from "lucide-react";
 import { MenuItem } from "@/types/cafe";
 import { useCart } from "@/context/CartContext";
 
@@ -18,44 +18,38 @@ export default function ProductCard({ item, onOpenDetails }: ProductCardProps) {
   const matchingCartItems = items.filter((i) => i.menuItemId === item.id);
   const totalQuantityInCart = matchingCartItems.reduce((acc, curr) => acc + curr.quantity, 0);
 
-  const hasCustomizations = (item.sizes && item.sizes.length > 0) || (item.options && item.options.length > 0);
-
   const handleAddClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!item.isAvailable) return;
-
-    if (hasCustomizations) {
-      onOpenDetails(item);
-    } else {
-      addItem(item, 1);
-    }
+    addItem(item, 1);
   };
 
   const handleMinusClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (matchingCartItems.length === 1) {
+    if (matchingCartItems.length > 0) {
       updateQuantity(matchingCartItems[0].id, -1);
-    } else {
-      onOpenDetails(item);
     }
   };
 
   const handlePlusClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (hasCustomizations) {
-      onOpenDetails(item);
+    if (matchingCartItems.length > 0) {
+      updateQuantity(matchingCartItems[0].id, 1);
     } else {
-      if (matchingCartItems.length === 1) {
-        updateQuantity(matchingCartItems[0].id, 1);
-      } else {
-        addItem(item, 1);
-      }
+      addItem(item, 1);
+    }
+  };
+
+  const handleCardClick = () => {
+    if (!item.isAvailable) return;
+    if (totalQuantityInCart === 0) {
+      addItem(item, 1);
     }
   };
 
   return (
     <div
-      onClick={() => onOpenDetails(item)}
+      onClick={handleCardClick}
       className={`group relative flex flex-col justify-between bg-[#FFFFFF] rounded-2xl overflow-hidden border border-[#B8A99A]/30 hover:border-[#C6A46C] shadow-xs hover:shadow-md transition-all duration-300 cursor-pointer ${
         !item.isAvailable ? "opacity-60 grayscale-[35%]" : ""
       }`}
@@ -148,7 +142,7 @@ export default function ProductCard({ item, onOpenDetails }: ProductCardProps) {
 
           {/* Primary Action Button: Deep Espresso with White text */}
           {item.isAvailable ? (
-            totalQuantityInCart > 0 && !hasCustomizations ? (
+            totalQuantityInCart > 0 ? (
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="flex items-center bg-[#241713] text-[#F7F2EA] rounded-xl overflow-hidden shadow-xs text-xs font-semibold"
@@ -175,11 +169,7 @@ export default function ProductCard({ item, onOpenDetails }: ProductCardProps) {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95"
               >
                 <span>ADD</span>
-                {hasCustomizations ? (
-                  <SlidersHorizontal className="w-3 h-3 text-[#C6A46C]" />
-                ) : (
-                  <Plus className="w-3 h-3 text-[#C6A46C]" />
-                )}
+                <Plus className="w-3 h-3 text-[#C6A46C]" />
               </button>
             )
           ) : (

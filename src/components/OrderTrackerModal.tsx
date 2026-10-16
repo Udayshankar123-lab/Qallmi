@@ -69,7 +69,7 @@ export default function OrderTrackerModal() {
     {
       key: "completed",
       label: "Delivered & Enjoyed",
-      desc: "Bon appétit at Qallmi Cafe",
+      desc: "Bon appétit at QALBI Cafe",
       icon: <UtensilsCrossed className="w-4 h-4" />,
       color: "from-teal-600 to-cyan-600",
     },

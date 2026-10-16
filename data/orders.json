@@ -5,6 +5,37 @@
     "customerPhone": "",
     "items": [
       {
+        "id": "m-5-default-{\"Egg Add-on\":\"No Egg\"}",
+        "menuItemId": "m-5",
+        "name": "Truffle Mushroom Sourdough Toast",
+        "unitPrice": 360,
+        "quantity": 3,
+        "selectedSize": "",
+        "selectedOptions": {
+          "Egg Add-on": "No Egg"
+        },
+        "imageUrl": "https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=800&q=80",
+        "notes": ""
+      }
+    ],
+    "subtotal": 1080,
+    "tax": 54,
+    "total": 1134,
+    "status": "completed",
+    "paymentStatus": "unpaid",
+    "paymentMethod": "pay_at_counter",
+    "transactionId": "DINEIN-XBIJ59",
+    "specialInstructions": "",
+    "id": "QLM-8982",
+    "createdAt": "2026-10-13T15:45:58.400Z",
+    "updatedAt": "2026-10-13T15:46:19.943Z"
+  },
+  {
+    "tableNumber": "04",
+    "customerName": "Table Guest",
+    "customerPhone": "",
+    "items": [
+      {
         "id": "m-1-Iced (350ml)-{\"Milk Choice\":\"Whole Milk\",\"Sweetness\":\"Sugar-Free\"}",
         "menuItemId": "m-1",
         "name": "Signature Spanish Latte",

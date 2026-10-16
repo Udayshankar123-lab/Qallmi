@@ -12,33 +12,42 @@ import ProductDetailModal from "@/components/ProductDetailModal";
 import StickyCartBar from "@/components/StickyCartBar";
 import CartDrawer from "@/components/CartDrawer";
 import OrderTrackerModal from "@/components/OrderTrackerModal";
-import { Sparkles, Wifi, Clock, MapPin, Coffee, Flame, Heart } from "lucide-react";
+import { Sparkles, Wifi, Clock, MapPin, Coffee, Flame, Heart, Phone, MessageCircle } from "lucide-react";
 
 function CafeMainView() {
   const { tableNumber } = useCart();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [dietaryFilter, setDietaryFilter] = useState<DietaryType | "all">("all");
   const [activeDetailItem, setActiveDetailItem] = useState<MenuItem | null>(null);
 
-  // Fetch live menu from API
+  // Fetch live menu and categories from API
   useEffect(() => {
-    async function loadMenu() {
+    async function loadData() {
       try {
-        const res = await fetch("/api/menu");
-        const data = await res.json();
-        if (data.success && data.items) {
-          setMenuItems(data.items);
+        const [menuRes, catRes] = await Promise.all([
+          fetch("/api/menu"),
+          fetch("/api/categories"),
+        ]);
+        const menuData = await menuRes.json();
+        const catData = await catRes.json();
+
+        if (menuData.success && menuData.items) {
+          setMenuItems(menuData.items);
+        }
+        if (catData.success && catData.categories && catData.categories.length > 0) {
+          setCategories(catData.categories);
         }
       } catch (err) {
-        console.error("Failed to fetch menu:", err);
+        console.error("Failed to fetch menu data:", err);
       } finally {
         setLoading(false);
       }
     }
-    loadMenu();
+    loadData();
   }, []);
 
   // Compute item counts per category
@@ -97,7 +106,7 @@ function CafeMainView() {
 
       {/* Category Pills Bar */}
       <CategoryChips
-        categories={INITIAL_CATEGORIES}
+        categories={categories}
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
         itemCounts={itemCounts}
@@ -115,9 +124,9 @@ function CafeMainView() {
                 </div>
                 <div>
                   <h2 className="font-serif font-black text-lg sm:text-xl text-[#241713] leading-tight">
-                    Chef & Barista Signatures
+                    Cafe Specials & Favorites
                   </h2>
-                  <p className="text-[11px] text-[#B8A99A] font-medium">Handcrafted daily specialties you can&apos;t miss</p>
+                  <p className="text-[11px] text-[#B8A99A] font-medium">Freshly prepared hot tea, coffee & snacks</p>
                 </div>
               </div>
               <span className="text-xs font-bold px-3 py-1 bg-[#C6A46C]/15 text-[#241713] rounded-full border border-[#C6A46C]/40 shadow-2xs">
@@ -144,8 +153,8 @@ function CafeMainView() {
               <div className="w-2.5 h-6 rounded-full bg-[#C6A46C]" />
               <h2 className="font-serif font-black text-lg sm:text-xl text-[#241713]">
                 {selectedCategory === "all"
-                  ? "Full Artisanal Catalog"
-                  : INITIAL_CATEGORIES.find((c) => c.id === selectedCategory)?.name || "Menu"}
+                  ? "Full Cafe Menu"
+                  : categories.find((c) => c.id === selectedCategory)?.name || "Menu"}
               </h2>
             </div>
             <span className="text-xs font-bold text-[#B8A99A] bg-[#FFFFFF] px-2.5 py-1 rounded-full border border-[#B8A99A]/30 shadow-2xs">
@@ -197,31 +206,99 @@ function CafeMainView() {
       </main>
 
       {/* Customer Website Footer: Deep Espresso with Warm Ivory Text & Gold Accents */}
-      <footer className="mt-14 border-t border-[#493126]/30 bg-[#241713] px-4 py-8 text-center text-xs text-[#F7F2EA] relative z-10">
-        <div className="max-w-4xl mx-auto space-y-4">
-          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-[#F7F2EA] font-semibold">
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-xl bg-[#493126] text-[#C6A46C] flex items-center justify-center">
-                <MapPin className="w-4 h-4" />
-              </span>
-              <span>Qallmi Roastery & Kitchen, 12 Indiranagar</span>
+      <footer className="mt-14 border-t border-[#493126]/30 bg-[#241713] px-4 py-10 text-center text-xs text-[#F7F2EA] relative z-10">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Cafe Name & Tagline */}
+          <div className="flex flex-col items-center">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2 h-2 rounded-full bg-[#C6A46C]" />
+              <h3 className="font-serif font-black tracking-widest text-lg text-[#F7F2EA]">
+                QALBI CAFE
+              </h3>
+              <span className="w-2 h-2 rounded-full bg-[#C6A46C]" />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-xl bg-[#493126] text-[#C6A46C] flex items-center justify-center">
+            <p className="text-xs text-[#B8A99A]">
+              Tea, Coffee, Snacks & Fast Food Kitchen
+            </p>
+          </div>
+
+          {/* Quick Contact & Details Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
+            {/* Reservations */}
+            <div className="bg-[#493126]/40 border border-[#C6A46C]/30 p-3.5 rounded-2xl">
+              <div className="flex items-center gap-2 text-[#C6A46C] font-bold text-xs mb-1">
+                <Phone className="w-4 h-4" />
+                <span>Reservations</span>
+              </div>
+              <a
+                href="tel:+917411833084"
+                className="font-serif font-bold text-sm text-[#F7F2EA] hover:text-[#C6A46C] block transition-colors"
+              >
+                +91 74118 33084
+              </a>
+              <p className="text-[11px] text-[#B8A99A] mt-0.5">Call to book a table</p>
+            </div>
+
+            {/* WhatsApp Chat */}
+            <div className="bg-[#493126]/40 border border-[#C6A46C]/30 p-3.5 rounded-2xl">
+              <div className="flex items-center gap-2 text-[#C6A46C] font-bold text-xs mb-1">
+                <MessageCircle className="w-4 h-4" />
+                <span>Quick WhatsApp</span>
+              </div>
+              <p className="text-xs text-[#B8A99A]">Instant query / orders</p>
+              <a
+                href="https://wa.me/917411833084?text=Hi,%20contacting%20regarding%20QALBI%20Cafe%20reservations"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block mt-0.5 text-xs text-[#C6A46C] hover:text-[#F7F2EA] font-semibold transition-colors"
+              >
+                Chat on WhatsApp →
+              </a>
+            </div>
+
+            {/* Timings */}
+            <div className="bg-[#493126]/40 border border-[#C6A46C]/30 p-3.5 rounded-2xl">
+              <div className="flex items-center gap-2 text-[#C6A46C] font-bold text-xs mb-1">
                 <Clock className="w-4 h-4" />
-              </span>
-              <span>Open Daily: 8:00 AM – 11:00 PM</span>
+                <span>Opening Hours</span>
+              </div>
+              <p className="font-serif font-bold text-sm text-[#F7F2EA]">Open Daily</p>
+              <p className="text-xs text-[#B8A99A]">2:00 PM – 12:00 AM</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-xl bg-[#493126] text-[#C6A46C] flex items-center justify-center">
+
+            {/* Guest Wi-Fi */}
+            <div className="bg-[#493126]/40 border border-[#C6A46C]/30 p-3.5 rounded-2xl">
+              <div className="flex items-center gap-2 text-[#C6A46C] font-bold text-xs mb-1">
                 <Wifi className="w-4 h-4" />
-              </span>
-              <span>Free Guest Wi-Fi: Qallmi_Guest</span>
+                <span>Free Guest Wi-Fi</span>
+              </div>
+              <p className="font-serif font-bold text-sm text-[#F7F2EA]">QALBI_Guest</p>
+              <p className="text-xs text-[#B8A99A]">High-speed internet</p>
             </div>
           </div>
-          <p className="text-[11px] text-[#B8A99A] font-medium">
-            © {new Date().getFullYear()} Qallmi Cafe. Digital Dine-in QR Ordering System • Pay at Counter. All taxes included as applicable.
-          </p>
+
+          {/* Full Location Address */}
+          <div className="p-4 bg-[#493126]/20 border border-[#B8A99A]/20 rounded-2xl text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#493126] text-[#C6A46C] flex items-center justify-center flex-shrink-0">
+                <MapPin className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#C6A46C] tracking-wider block">Cafe Location</span>
+                <p className="text-xs text-[#F7F2EA] font-medium leading-relaxed">
+                  Kannan nagar, bus stop, opposite Bijapur, Bammanajogi, Vijayapura, Karnataka 586109
+                </p>
+              </div>
+            </div>
+            <a
+              href="https://maps.app.goo.gl/yw9grk3i39XkVe9z7"
+              target="_blank"
+              rel="noreferrer"
+              className="px-3.5 py-1.5 bg-[#C6A46C] hover:bg-[#d8b880] text-[#241713] rounded-xl text-xs font-bold transition-colors whitespace-nowrap flex-shrink-0"
+            >
+              Open in Maps
+            </a>
+          </div>
         </div>
       </footer>
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMenuItems, saveMenuItem, toggleItemAvailability, deleteMenuItem } from "@/lib/db";
+import { getMenuItems, saveMenuItem, toggleItemAvailability, deleteMenuItem, clearMenuItems } from "@/lib/db";
 import { MenuItem } from "@/types/cafe";
 
 export async function GET() {
@@ -47,6 +47,13 @@ export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
+    const action = searchParams.get("action");
+
+    if (action === "clear_all") {
+      const cleared = clearMenuItems();
+      return NextResponse.json({ success: cleared });
+    }
+
     if (!id) {
       return NextResponse.json({ success: false, error: "Missing item id" }, { status: 400 });
     }

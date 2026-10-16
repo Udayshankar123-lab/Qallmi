@@ -290,16 +290,8 @@ export default function CartDrawer() {
           <div className="p-4 sm:p-5 bg-[#FFFFFF] border-t border-[#B8A99A]/20 space-y-3 shadow-sm flex-shrink-0">
             {/* Bill breakdown */}
             <div className="space-y-1.5 text-xs text-[#B8A99A]">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span className="font-semibold text-[#241713]">₹{subtotal}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Taxes & GST (5%)</span>
-                <span className="font-semibold text-[#241713]">₹{tax}</span>
-              </div>
-              <div className="flex justify-between text-sm font-bold text-[#241713] pt-1.5 border-t border-[#F7F2EA]">
-                <span>Total Bill Amount</span>
+              <div className="flex justify-between text-sm font-bold text-[#241713] pt-0.5">
+                <span>Total Bill (Pay at Counter)</span>
                 <span className="font-serif text-base text-[#493126]">₹{total}</span>
               </div>
             </div>

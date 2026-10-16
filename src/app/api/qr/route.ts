@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         width,
       });
 
-      const filename = `qallmi-table-${table}-qr.png`;
+      const filename = `qalbi-table-${table}-qr.png`;
       const headers: Record<string, string> = {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=86400",
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       width,
     });
 
-    const filename = `qallmi-table-${table}-qr.svg`;
+    const filename = `qalbi-table-${table}-qr.svg`;
     const headers: Record<string, string> = {
       "Content-Type": "image/svg+xml; charset=utf-8",
       "Cache-Control": "public, max-age=86400",

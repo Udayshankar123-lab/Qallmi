@@ -79,16 +79,16 @@ function PrintQRContent() {
               type="text"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="e.g. http://10.63.0.52:3000 or https://qallmi.vercel.app"
+              placeholder="e.g. https://qalbicafe.vercel.app"
               className="w-full px-3.5 py-2 text-xs font-mono bg-[#F5F3EF] border border-[#B8A99A]/40 rounded-xl text-[#241713] focus:outline-none focus:ring-1 focus:ring-[#C6A46C]"
             />
             <div className="flex items-center gap-2 mt-1.5">
               <button
                 type="button"
-                onClick={() => setBaseUrl("http://10.63.0.52:3000")}
+                onClick={() => setBaseUrl("https://qalbicafe.vercel.app")}
                 className="text-[10px] font-bold text-[#493126] hover:text-[#241713] px-2 py-0.5 rounded bg-[#493126]/10"
               >
-                Local Wi-Fi (10.63.0.52:3000)
+                QALBI Production Domain
               </button>
               <button
                 type="button"
@@ -150,10 +150,10 @@ function PrintQRContent() {
                 </div>
                 <div className="text-left">
                   <span className="font-serif tracking-widest font-black text-sm text-[#241713] block leading-none">
-                    QALLMI CAFE
+                    QALBI CAFE
                   </span>
                   <span className="text-[9px] tracking-widest uppercase font-bold text-[#B8A99A]">
-                    Artisanal Roastery
+                    Tea, Coffee & Fast Food
                   </span>
                 </div>
               </div>
@@ -180,26 +180,29 @@ function PrintQRContent() {
                   Scan with Camera to Order
                 </h4>
                 <p className="text-[11px] text-[#493126] font-medium max-w-xs">
-                  Browse artisanal menu • Customize order • Pay at counter
+                  Browse live menu • Instant table ordering • Pay at counter
                 </p>
               </div>
 
-              {/* Wifi & URL footer */}
-              <div className="mt-auto pt-3 border-t border-[#F5F3EF] w-full flex items-center justify-between text-[10px] text-[#B8A99A]">
-                <div className="flex items-center gap-1 font-semibold text-[#493126]">
-                  <Wifi className="w-3 h-3 text-[#C6A46C]" />
-                  <span>Wi-Fi: Qallmi_Guest</span>
+              {/* Owner & Address Footer on Card */}
+              <div className="mt-auto pt-2.5 border-t border-[#F5F3EF] w-full space-y-1 text-[10px] text-[#B8A99A]">
+                <div className="flex items-center justify-between font-semibold text-[#493126]">
+                  <div className="flex items-center gap-1">
+                    <Wifi className="w-3 h-3 text-[#C6A46C]" />
+                    <span>Wi-Fi: QALBI_Guest</span>
+                  </div>
+                  <span>+91 74118 33084</span>
                 </div>
-                <span className="font-mono text-[9px] text-[#B8A99A] truncate max-w-[150px]">
-                  {targetUrl}
-                </span>
+                <p className="text-[9px] text-[#B8A99A] truncate text-center">
+                  Kannan nagar, bus stop, opposite Bijapur, Vijayapura
+                </p>
               </div>
 
               {/* Non-printing quick download button */}
               <div className="mt-3 pt-2 print:hidden flex items-center gap-2">
                 <a
                   href={downloadPngUrl}
-                  download={`qallmi-table-${num}-qr.png`}
+                  download={`qalbi-table-${num}-qr.png`}
                   className="inline-flex items-center gap-1 px-3 py-1 bg-[#F5F3EF] hover:bg-[#E5E2DC] text-[#493126] rounded-lg text-[11px] font-bold transition-colors"
                 >
                   <Download className="w-3 h-3 text-[#C6A46C]" />

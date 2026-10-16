@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Qallmi Cafe | Artisanal Coffee & Kitchen",
-  description: "Browse our seasonal artisanal menu, order directly from your table with instant kitchen dispatch. Pay at the counter or table after dining.",
+  title: "QALBI Cafe | Tea, Coffee & Fast Food",
+  description: "Browse our tea, coffee, gobi, fried rice and fast food menu. Order directly from your table and pay at the counter.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Qallmi Cafe",
+    title: "QALBI Cafe",
   },
   icons: {
     icon: "/favicon.ico",

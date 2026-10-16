@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { X, Plus, Minus, Check, MessageSquare, Sparkles } from "lucide-react";
+import { X, Plus, Minus, MessageSquare, Sparkles } from "lucide-react";
 import { MenuItem } from "@/types/cafe";
 import { useCart } from "@/context/CartContext";
 
@@ -15,8 +15,6 @@ export default function ProductDetailModal({ item, onClose }: ProductDetailModal
   const { addItem } = useCart();
 
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState<string>("");
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [specialNotes, setSpecialNotes] = useState("");
   const [imgError, setImgError] = useState(false);
 
@@ -25,48 +23,15 @@ export default function ProductDetailModal({ item, onClose }: ProductDetailModal
       setQuantity(1);
       setSpecialNotes("");
       setImgError(false);
-
-      if (item.sizes && item.sizes.length > 0) {
-        setSelectedSize(item.sizes[0].name);
-      } else {
-        setSelectedSize("");
-      }
-
-      if (item.options && item.options.length > 0) {
-        const initialOptions: Record<string, string> = {};
-        item.options.forEach((group) => {
-          if (group.choices.length > 0) {
-            initialOptions[group.name] = group.choices[0].label;
-          }
-        });
-        setSelectedOptions(initialOptions);
-      } else {
-        setSelectedOptions({});
-      }
     }
   }, [item]);
 
   if (!item) return null;
 
-  let calculatedUnitPrice = item.price;
-  if (selectedSize && item.sizes) {
-    const s = item.sizes.find((x) => x.name === selectedSize);
-    if (s) calculatedUnitPrice += s.priceDelta;
-  }
-  if (item.options) {
-    item.options.forEach((group) => {
-      const choiceLabel = selectedOptions[group.name];
-      if (choiceLabel) {
-        const choice = group.choices.find((c) => c.label === choiceLabel);
-        if (choice) calculatedUnitPrice += choice.priceDelta;
-      }
-    });
-  }
-
-  const grandTotal = calculatedUnitPrice * quantity;
+  const grandTotal = item.price * quantity;
 
   const handleAddToCart = () => {
-    addItem(item, quantity, selectedSize, selectedOptions, specialNotes);
+    addItem(item, quantity, undefined, undefined, specialNotes);
     onClose();
   };
 
@@ -131,85 +96,6 @@ export default function ProductDetailModal({ item, onClose }: ProductDetailModal
           <p className="text-sm text-[#B8A99A] leading-relaxed">
             {item.description}
           </p>
-
-          {/* Size Options */}
-          {item.sizes && item.sizes.length > 0 && (
-            <div className="space-y-2.5">
-              <label className="block text-xs font-bold tracking-wider uppercase text-[#241713]">
-                Choose Size
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {item.sizes.map((size) => {
-                  const isSelected = selectedSize === size.name;
-                  return (
-                    <button
-                      key={size.name}
-                      type="button"
-                      onClick={() => setSelectedSize(size.name)}
-                      className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-medium transition-all ${
-                        isSelected
-                          ? "border-[#241713] bg-[#F7F2EA] text-[#241713] ring-1 ring-[#241713] font-bold"
-                          : "border-[#B8A99A]/30 bg-white text-[#493126] hover:border-[#241713]"
-                      }`}
-                    >
-                      <span className="font-semibold text-sm">{size.name}</span>
-                      <span className="text-[#C6A46C] font-bold mt-0.5">
-                        {size.priceDelta > 0 ? `+₹${size.priceDelta}` : "Standard"}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Additional Custom Options */}
-          {item.options &&
-            item.options.map((group) => (
-              <div key={group.name} className="space-y-2.5">
-                <label className="block text-xs font-bold tracking-wider uppercase text-[#241713]">
-                  {group.name}
-                </label>
-                <div className="space-y-1.5">
-                  {group.choices.map((choice) => {
-                    const isSelected = selectedOptions[group.name] === choice.label;
-                    return (
-                      <button
-                        key={choice.label}
-                        type="button"
-                        onClick={() =>
-                          setSelectedOptions((prev) => ({
-                            ...prev,
-                            [group.name]: choice.label,
-                          }))
-                        }
-                        className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs transition-all ${
-                          isSelected
-                            ? "border-[#241713] bg-[#F7F2EA] text-[#241713] font-bold"
-                            : "border-[#B8A99A]/30 bg-white text-[#493126] hover:border-[#241713]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                              isSelected
-                                ? "border-[#C6A46C] bg-[#C6A46C] text-[#241713]"
-                                : "border-[#B8A99A]/60"
-                            }`}
-                          >
-                            {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                          </div>
-                          <span>{choice.label}</span>
-                        </div>
-                        <span className="text-[#493126] font-bold">
-                          {choice.priceDelta > 0 ? `+₹${choice.priceDelta}` : "Free"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
 
           {/* Kitchen Notes */}
           <div className="space-y-1.5">

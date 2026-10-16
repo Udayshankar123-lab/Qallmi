@@ -35,19 +35,19 @@ export default function HeroBanner({
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-serif font-bold tracking-tight text-[#F7F2EA] mb-2 leading-tight">
-              Artisanal Coffee & Kitchen
+              Tea, Coffee & Fast Food Kitchen
             </h1>
             <p className="text-xs sm:text-sm text-[#B8A99A] max-w-lg leading-relaxed">
-              Curated single-origin brews, fresh morning bakes, and kitchen plates. Browse, customize, and place your order directly to our kitchen.
+              Fresh tea, hot coffee, crispy gobi, fried rice, noodles and tasty snacks. Browse menu, order directly for your table, and pay at the counter.
             </p>
           </div>
 
           <div className="hidden md:flex flex-col gap-1.5 self-start bg-[#493126]/50 border border-[#C6A46C]/30 px-4 py-2.5 rounded-xl text-xs text-[#F7F2EA]">
             <div className="flex items-center gap-2 text-[#C6A46C] font-serif font-semibold">
               <Coffee className="w-4 h-4" />
-              <span>Specialty Roast & Brew</span>
+              <span>Tea, Coffee & Snacks</span>
             </div>
-            <span className="text-[11px] text-[#B8A99A]">Table-side service • Pay at Counter</span>
+            <span className="text-[11px] text-[#B8A99A]">Freshly Prepared • Pay at Counter</span>
           </div>
         </div>
 
@@ -59,7 +59,7 @@ export default function HeroBanner({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search coffee, croissants, sourdough, bowls..."
+              placeholder="Search tea, coffee, gobi, fried rice, noodles, snacks..."
               className="w-full pl-10 pr-10 py-2.5 bg-[#FFFFFF] text-[#241713] rounded-xl text-sm placeholder-[#B8A99A] focus:outline-none focus:ring-1 focus:ring-[#C6A46C] shadow-sm"
             />
             {searchQuery && (
