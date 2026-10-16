@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Coffee, Printer, ArrowLeft, Download, Wifi, UtensilsCrossed } from "lucide-react";
+import { createSecureTableUrl } from "@/lib/tableSecurity";
 
 function PrintQRContent() {
   const searchParams = useSearchParams();
@@ -130,7 +131,7 @@ function PrintQRContent() {
       {/* Printable Grid of Table Standees */}
       <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-8 print:grid-cols-2 print:gap-6 print:m-0 print:p-0">
         {tables.map((num) => {
-          const targetUrl = `${baseUrl.replace(/\/$/, "")}/?table=${num}`;
+          const targetUrl = createSecureTableUrl(baseUrl, num);
           const qrSrc = `/api/qr?text=${encodeURIComponent(targetUrl)}&table=${num}&format=svg`;
           const downloadPngUrl = `/api/qr?text=${encodeURIComponent(targetUrl)}&table=${num}&format=png&download=true&width=1024`;
 

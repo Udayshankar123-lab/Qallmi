@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { CartItem, MenuItem, Order } from "@/types/cafe";
+import { verifyTableToken, cleanAddressBar } from "@/lib/tableSecurity";
 
 interface CartContextType {
   items: CartItem[];
@@ -33,24 +34,43 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [tableNumber, setTableNumberState] = useState<string>("04");
+  const [tableNumber, setTableNumberState] = useState<string>("01");
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isTrackerOpen, setIsTrackerOpen] = useState(false);
 
-  // Sync table from URL query param or localStorage
+  // Sync table from secure URL token or session storage; immediately clean address bar
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const tableParam = params.get("table");
-      if (tableParam) {
-        const cleanTable = tableParam.padStart(2, "0");
-        setTableNumberState(cleanTable);
-        localStorage.setItem("qallmi_table", cleanTable);
-      } else {
-        const saved = localStorage.getItem("qallmi_table");
-        if (saved) setTableNumberState(saved);
+      const tokenParam = params.get("t") || params.get("token") || params.get("tbl");
+      
+      let establishedTable: string | null = null;
+
+      if (tokenParam) {
+        // Verify cryptographic signature from QR code
+        const verified = verifyTableToken(tokenParam);
+        if (verified) {
+          establishedTable = verified;
+          setTableNumberState(verified);
+          sessionStorage.setItem("qalbi_table", verified);
+          localStorage.setItem("qalbi_table", verified);
+        }
       }
+
+      // If no valid QR token was in URL, restore from session/local storage
+      if (!establishedTable) {
+        const saved =
+          sessionStorage.getItem("qalbi_table") ||
+          localStorage.getItem("qalbi_table") ||
+          localStorage.getItem("qallmi_table");
+        if (saved) {
+          setTableNumberState(saved);
+        }
+      }
+
+      // Clean the address bar immediately so ?t= or ?table= is never visible or editable
+      cleanAddressBar();
 
       // Check for previously active order
       const savedOrder = localStorage.getItem("qallmi_active_order");
@@ -68,7 +88,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const formatted = table.padStart(2, "0");
     setTableNumberState(formatted);
     if (typeof window !== "undefined") {
-      localStorage.setItem("qallmi_table", formatted);
+      sessionStorage.setItem("qalbi_table", formatted);
+      localStorage.setItem("qalbi_table", formatted);
     }
   };
 

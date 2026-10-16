@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { createSecureTableUrl } from "@/lib/tableSecurity";
 import {
   Coffee,
   ShoppingBag,
@@ -1106,7 +1107,7 @@ export default function AdminDashboardPage() {
             {/* Grid of Real Scannable Table QR Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {Array.from({ length: qrTableCount }, (_, i) => (i + 1).toString().padStart(2, "0")).map((num) => {
-                const targetUrl = `${qrBaseUrl.replace(/\/$/, "")}/?table=${num}`;
+                const targetUrl = createSecureTableUrl(qrBaseUrl, num);
                 const qrSvgUrl = `/api/qr?text=${encodeURIComponent(targetUrl)}&table=${num}&format=svg`;
                 const qrPngDownload = `/api/qr?text=${encodeURIComponent(targetUrl)}&table=${num}&format=png&download=true&width=1024`;
                 const qrSvgDownload = `/api/qr?text=${encodeURIComponent(targetUrl)}&table=${num}&format=svg&download=true`;

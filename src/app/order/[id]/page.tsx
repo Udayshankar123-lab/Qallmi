@@ -129,7 +129,7 @@ export default function OrderTrackingPage({
       <header className="bg-[#241713] border-b border-[#493126]/30 px-4 py-3 sticky top-0 z-40 text-[#F7F2EA]">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <Link
-            href={`/?table=${order.tableNumber}`}
+            href="/"
             className="flex items-center gap-1.5 text-xs font-bold text-[#C6A46C] hover:text-[#F7F2EA] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -262,7 +262,7 @@ export default function OrderTrackingPage({
         {/* Action Button: Deep Espresso */}
         <div className="text-center">
           <Link
-            href={`/?table=${order.tableNumber}`}
+            href="/"
             className="inline-flex items-center gap-2 px-6 py-3.5 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-2xl text-xs font-black tracking-wider uppercase shadow-xl transition-all active:scale-98"
           >
             <PlusCircle className="w-4 h-4 text-[#C6A46C]" />
