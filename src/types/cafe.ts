@@ -64,6 +64,16 @@ export interface Order {
   updatedAt: string;
 }
 
+export interface DailyEarningsRecord {
+  date: string; // YYYY-MM-DD
+  displayDate: string; // e.g. "Friday, Oct 16, 2026"
+  totalOrders: number;
+  totalEarnings: number;
+  orders: Order[];
+  archivedAt: string;
+}
+
+
 export interface Category {
   id: string;
   name: string;

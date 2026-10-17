@@ -12,7 +12,26 @@ import ProductDetailModal from "@/components/ProductDetailModal";
 import StickyCartBar from "@/components/StickyCartBar";
 import CartDrawer from "@/components/CartDrawer";
 import OrderTrackerModal from "@/components/OrderTrackerModal";
-import { Sparkles, Wifi, Clock, MapPin, Coffee, Flame, Heart, Phone, MessageCircle } from "lucide-react";
+import { Sparkles, Wifi, Clock, MapPin, Coffee, Flame, Heart, Phone, QrCode, X } from "lucide-react";
+
+function Instagram({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+    </svg>
+  );
+}
 
 function CafeMainView() {
   const { tableNumber } = useCart();
@@ -23,6 +42,7 @@ function CafeMainView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dietaryFilter, setDietaryFilter] = useState<DietaryType | "all">("all");
   const [activeDetailItem, setActiveDetailItem] = useState<MenuItem | null>(null);
+  const [isInstaQrOpen, setIsInstaQrOpen] = useState(false);
 
   // Fetch live menu and categories from API
   useEffect(() => {
@@ -239,21 +259,44 @@ function CafeMainView() {
               <p className="text-[11px] text-[#B8A99A] mt-0.5">Call to book a table</p>
             </div>
 
-            {/* WhatsApp Chat */}
-            <div className="bg-[#493126]/40 border border-[#C6A46C]/30 p-3.5 rounded-2xl">
-              <div className="flex items-center gap-2 text-[#C6A46C] font-bold text-xs mb-1">
-                <MessageCircle className="w-4 h-4" />
-                <span>Quick WhatsApp</span>
+            {/* Instagram Profile */}
+            <div className="bg-[#493126]/40 border border-[#C6A46C]/30 p-3.5 rounded-2xl flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-[#C6A46C] font-bold text-xs mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Instagram className="w-4 h-4 text-[#C6A46C]" />
+                    <span>Instagram</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsInstaQrOpen(true)}
+                    className="p-1 hover:bg-[#C6A46C]/20 rounded-lg text-[#C6A46C] text-[10px] flex items-center gap-1 transition-colors"
+                    title="View Instagram QR"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>QR</span>
+                  </button>
+                </div>
+                <a
+                  href="https://www.instagram.com/qalbicafe26/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-serif font-bold text-sm text-[#F7F2EA] hover:text-[#C6A46C] block transition-colors"
+                >
+                  @QALBICAFE26
+                </a>
+                <p className="text-[11px] text-[#B8A99A] mt-0.5">Follow for daily specials</p>
               </div>
-              <p className="text-xs text-[#B8A99A]">Instant query / orders</p>
-              <a
-                href="https://wa.me/917411833084?text=Hi,%20contacting%20regarding%20QALBI%20Cafe%20reservations"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-block mt-0.5 text-xs text-[#C6A46C] hover:text-[#F7F2EA] font-semibold transition-colors"
-              >
-                Chat on WhatsApp →
-              </a>
+              <div className="pt-2 flex items-center gap-2">
+                <a
+                  href="https://www.instagram.com/qalbicafe26/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-[#C6A46C] hover:text-[#F7F2EA] font-semibold transition-colors flex items-center gap-1"
+                >
+                  Follow on Instagram →
+                </a>
+              </div>
             </div>
 
             {/* Timings */}
@@ -312,6 +355,54 @@ function CafeMainView() {
       />
       <CartDrawer />
       <OrderTrackerModal />
+
+      {/* Instagram QR Popup Modal */}
+      {isInstaQrOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-[#FFFFFF] w-full max-w-sm rounded-3xl p-6 text-center shadow-2xl border border-[#B8A99A]/30 relative animate-in zoom-in-95 duration-200">
+            <button
+              type="button"
+              onClick={() => setIsInstaQrOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#F5F3EF] hover:bg-[#E5E2DC] flex items-center justify-center text-[#493126] transition-colors"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white flex items-center justify-center mx-auto mb-3 shadow-sm">
+              <Instagram className="w-6 h-6" />
+            </div>
+            <h3 className="font-serif font-black text-lg text-[#241713]">
+              QALBI Cafe on Instagram
+            </h3>
+            <p className="text-xs text-[#B8A99A] font-semibold mt-0.5">
+              @QALBICAFE26
+            </p>
+
+            <div className="my-4 p-2.5 bg-white rounded-2xl border-2 border-[#241713]/10 shadow-inner flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/instagram-qr.png"
+                alt="Instagram QR Code @QALBICAFE26"
+                className="w-56 h-56 object-contain rounded-xl"
+              />
+            </div>
+
+            <p className="text-xs text-[#493126] font-medium mb-4">
+              Scan with camera or tap below to open our Instagram profile.
+            </p>
+
+            <a
+              href="https://www.instagram.com/qalbicafe26/"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full py-3 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md"
+            >
+              <Instagram className="w-4 h-4 text-[#C6A46C]" />
+              <span>Open @QALBICAFE26</span>
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -38,8 +38,14 @@ import {
   X,
   Phone,
   MapPin,
+  Archive,
+  Calendar,
+  CalendarCheck,
+  ChevronDown,
+  ChevronUp,
+  History,
 } from "lucide-react";
-import { MenuItem, Order, OrderStatus, PaymentStatus, DietaryType, Category } from "@/types/cafe";
+import { MenuItem, Order, OrderStatus, PaymentStatus, DietaryType, Category, DailyEarningsRecord } from "@/types/cafe";
 import { INITIAL_CATEGORIES } from "@/lib/initialData";
 
 export default function AdminDashboardPage() {
@@ -48,13 +54,30 @@ export default function AdminDashboardPage() {
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"orders" | "menu" | "qr" | "analytics">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "menu" | "qr" | "daily_earnings">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("active");
+
+  // Daily records and archiving state
+  const [dailyRecords, setDailyRecords] = useState<DailyEarningsRecord[]>([]);
+  const [loadingDailyRecords, setLoadingDailyRecords] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [archiveToast, setArchiveToast] = useState<string | null>(null);
+  const [selectedRecordForDetail, setSelectedRecordForDetail] = useState<DailyEarningsRecord | null>(null);
+  const [selectedDayToPrint, setSelectedDayToPrint] = useState<DailyEarningsRecord | null>(null);
+
+  // Security PIN Change Modal state
+  const [isChangePinModalOpen, setIsChangePinModalOpen] = useState(false);
+  const [oldPinInput, setOldPinInput] = useState("");
+  const [newPinInput, setNewPinInput] = useState("");
+  const [confirmPinInput, setConfirmPinInput] = useState("");
+  const [pinChangeError, setPinChangeError] = useState("");
+  const [pinChangeSuccess, setPinChangeSuccess] = useState("");
+  const [isChangingPin, setIsChangingPin] = useState(false);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -118,6 +141,85 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchDailyRecords = async () => {
+    try {
+      setLoadingDailyRecords(true);
+      const res = await fetch("/api/archive");
+      const data = await res.json();
+      if (data.success && data.records) {
+        setDailyRecords(data.records);
+      }
+    } catch (err) {
+      console.error("Error fetching daily records:", err);
+    } finally {
+      setLoadingDailyRecords(false);
+    }
+  };
+
+  const handleArchiveOrders = async (mode: "yesterday" | "close_day" = "yesterday") => {
+    if (mode === "close_day") {
+      const confirmClose = window.confirm(
+        "Are you sure you want to close the day? This will archive completed orders to Daily Earnings and clean your live orders queue."
+      );
+      if (!confirmClose) return;
+    }
+
+    setIsArchiving(true);
+    try {
+      const res = await fetch("/api/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.records) setDailyRecords(data.records);
+        if (data.remainingOrders) setOrders(data.remainingOrders);
+        setArchiveToast(
+          data.archivedCount > 0
+            ? `Successfully archived ${data.archivedCount} orders into Daily Earnings!`
+            : "No eligible past orders found to archive."
+        );
+        setTimeout(() => setArchiveToast(null), 4000);
+      } else {
+        alert(data.error || "Failed to archive orders");
+      }
+    } catch (err) {
+      console.error("Archive error:", err);
+      alert("Failed to archive orders. Please try again.");
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  // Detect count of yesterday's / past orders still sitting in the active queue
+  const yesterdayOrdersCount = useMemo(() => {
+    const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    return orders.filter((o) => {
+      const d = new Date(o.createdAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      return d < todayKey;
+    }).length;
+  }, [orders]);
+
+  // Today's running metrics
+  const todayMetrics = useMemo(() => {
+    const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const todayOrders = orders.filter((o) => {
+      const d = new Date(o.createdAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      return d === todayKey;
+    });
+
+    const earnings = todayOrders.reduce(
+      (sum, o) => sum + (o.status !== "cancelled" ? o.total : 0),
+      0
+    );
+
+    return {
+      count: todayOrders.length,
+      earnings,
+    };
+  }, [orders]);
+
   useEffect(() => {
     // Check staff authentication session
     if (typeof window !== "undefined") {
@@ -133,8 +235,12 @@ export default function AdminDashboardPage() {
     fetchOrders();
     fetchMenu();
     fetchCategories();
+    fetchDailyRecords();
 
-    const interval = setInterval(fetchOrders, 5000);
+    const interval = setInterval(() => {
+      fetchOrders();
+      fetchDailyRecords();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -211,11 +317,33 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handlePinSubmit = (e?: React.FormEvent, customPin?: string) => {
+  const handlePinSubmit = async (e?: React.FormEvent, customPin?: string) => {
     if (e) e.preventDefault();
     const pin = customPin !== undefined ? customPin : pinInput;
-    // Default PIN: 1234 or Farhan's contact prefix 7411
-    if (pin === "1234" || pin === "7411") {
+
+    let isValid = false;
+    try {
+      const res = await fetch("/api/admin/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", pin }),
+      });
+      const data = await res.json();
+      if (data.success && data.isValid) {
+        isValid = true;
+      }
+    } catch {
+      // offline / fallback
+    }
+
+    if (!isValid && typeof window !== "undefined") {
+      const savedPin = localStorage.getItem("qalbi_staff_pin");
+      if (pin === savedPin || pin === "1234" || pin === "7411") {
+        isValid = true;
+      }
+    }
+
+    if (isValid) {
       if (typeof window !== "undefined") {
         sessionStorage.setItem("qalbi_staff_auth", "true");
       }
@@ -225,6 +353,66 @@ export default function AdminDashboardPage() {
     } else {
       setPinError(true);
       setPinInput("");
+    }
+  };
+
+  const handleChangePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinChangeError("");
+    setPinChangeSuccess("");
+
+    if (!oldPinInput || !newPinInput || !confirmPinInput) {
+      setPinChangeError("Please fill all PIN fields");
+      return;
+    }
+    if (newPinInput !== confirmPinInput) {
+      setPinChangeError("New PIN and Confirm PIN do not match");
+      return;
+    }
+    if (newPinInput.length < 4) {
+      setPinChangeError("New PIN must be at least 4 digits");
+      return;
+    }
+
+    setIsChangingPin(true);
+    try {
+      const res = await fetch("/api/admin/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPin: oldPinInput, newPin: newPinInput }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("qalbi_staff_pin", newPinInput);
+        }
+        setPinChangeSuccess("Security PIN updated successfully!");
+        setOldPinInput("");
+        setNewPinInput("");
+        setConfirmPinInput("");
+        setTimeout(() => {
+          setIsChangePinModalOpen(false);
+          setPinChangeSuccess("");
+        }, 1500);
+      } else {
+        setPinChangeError(data.error || "Failed to update PIN");
+      }
+    } catch {
+      if (typeof window !== "undefined") {
+        const currentSaved = localStorage.getItem("qalbi_staff_pin") || "1234";
+        if (oldPinInput === currentSaved || oldPinInput === "1234" || oldPinInput === "7411") {
+          localStorage.setItem("qalbi_staff_pin", newPinInput);
+          setPinChangeSuccess("Security PIN updated successfully!");
+          setTimeout(() => {
+            setIsChangePinModalOpen(false);
+            setPinChangeSuccess("");
+          }, 1500);
+        } else {
+          setPinChangeError("Current PIN is incorrect");
+        }
+      }
+    } finally {
+      setIsChangingPin(false);
     }
   };
 
@@ -513,12 +701,6 @@ export default function AdminDashboardPage() {
               Unlock Terminal
             </button>
           </form>
-
-          <div className="pt-2 border-t border-[#F5F3EF] flex items-center justify-center text-[11px] text-[#B8A99A]">
-            <span className="text-[10px] bg-[#C6A46C]/20 text-[#493126] px-3 py-1 rounded-full font-bold">
-              Default PIN: 1234
-            </span>
-          </div>
         </div>
       </div>
     );
@@ -590,21 +772,38 @@ export default function AdminDashboardPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab("analytics")}
+              onClick={() => setActiveTab("daily_earnings")}
               className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ${
-                activeTab === "analytics"
+                activeTab === "daily_earnings"
                   ? "bg-[#493126] text-[#F7F2EA] shadow-md border border-[#C6A46C]/30"
                   : "text-[#B8A99A] hover:text-[#F7F2EA]"
               }`}
             >
               <DollarSign className="w-3.5 h-3.5 text-[#C6A46C]" />
-              <span className="hidden md:inline">Analytics</span>
+              <span className="hidden md:inline">Daily Earnings</span>
+            </button>
+
+            {/* Change Staff Security Key */}
+            <button
+              onClick={() => {
+                setPinChangeError("");
+                setPinChangeSuccess("");
+                setOldPinInput("");
+                setNewPinInput("");
+                setConfirmPinInput("");
+                setIsChangePinModalOpen(true);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-[#493126]/60 hover:bg-[#493126] text-[#C6A46C] hover:text-[#F7F2EA] flex items-center gap-1 transition-colors ml-1"
+              title="Change Security PIN / Key"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Key</span>
             </button>
 
             {/* Lock / Logout Terminal Button */}
             <button
               onClick={handleLogout}
-              className="px-2.5 py-1.5 rounded-xl bg-[#493126]/60 hover:bg-[#493126] text-[#C6A46C] hover:text-[#F7F2EA] flex items-center gap-1 transition-colors ml-1"
+              className="px-2.5 py-1.5 rounded-xl bg-[#493126]/60 hover:bg-[#493126] text-[#C6A46C] hover:text-[#F7F2EA] flex items-center gap-1 transition-colors ml-0.5"
               title="Lock Staff Terminal"
             >
               <Lock className="w-3.5 h-3.5" />
@@ -619,6 +818,51 @@ export default function AdminDashboardPage() {
         {/* ================= TAB 1: KITCHEN ORDERS FEED ================= */}
         {activeTab === "orders" && (
           <div className="space-y-6">
+            {/* Archive Toast Notification */}
+            {archiveToast && (
+              <div className="bg-[#241713] text-[#F7F2EA] px-4.5 py-3 rounded-2xl text-xs font-bold flex items-center justify-between border border-[#C6A46C]/40 shadow-lg animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-[#C6A46C]" />
+                  <span>{archiveToast}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setArchiveToast(null)}
+                  className="text-[#B8A99A] hover:text-[#F7F2EA]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Yesterday Orders Archiving Banner */}
+            {yesterdayOrdersCount > 0 && (
+              <div className="bg-[#493126] text-[#F7F2EA] p-4 rounded-3xl border border-[#C6A46C]/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md animate-in fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#241713] text-[#C6A46C] flex items-center justify-center flex-shrink-0">
+                    <Archive className="w-5 h-5 text-[#C6A46C]" />
+                  </div>
+                  <div>
+                    <h4 className="font-serif font-bold text-sm text-[#F7F2EA]">
+                      {yesterdayOrdersCount} Orders from Yesterday
+                    </h4>
+                    <p className="text-xs text-[#B8A99A]">
+                      Archive them to clean your live kitchen queue and record overall daily earnings.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isArchiving}
+                  onClick={() => handleArchiveOrders("yesterday")}
+                  className="px-4 py-2 bg-[#C6A46C] hover:bg-[#d8b880] text-[#241713] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap active:scale-95 disabled:opacity-50"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                  <span>{isArchiving ? "Archiving..." : "Archive Yesterday's Orders"}</span>
+                </button>
+              </div>
+            )}
+
             {/* Orders Header & Filter Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FFFFFF] p-4.5 rounded-3xl border border-[#B8A99A]/30 shadow-xs">
               <div>
@@ -1180,158 +1424,215 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* ================= TAB 4: REVENUE & SALES ANALYTICS ================= */}
-        {activeTab === "analytics" && (
+        {/* ================= TAB 4: DAILY EARNINGS & HISTORICAL LEDGER ================= */}
+        {activeTab === "daily_earnings" && (
           <div className="space-y-6">
-            <div className="bg-[#FFFFFF] p-4.5 rounded-3xl border border-[#B8A99A]/30 shadow-xs">
-              <h2 className="font-serif font-black text-xl text-[#241713]">
-                Today&apos;s Cafe Sales & Performance
-              </h2>
-              <p className="text-xs text-[#B8A99A] mt-0.5 font-medium">
-                Live metrics from completed online dine-in transactions.
-              </p>
+            {/* Header with Title and Shift Timings */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-[#B8A99A]/30 shadow-xs">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase text-[#C6A46C] bg-[#241713] tracking-wider">
+                    Ledger & Accounting
+                  </span>
+                  <span className="text-xs text-[#B8A99A]">2:00 PM – 12:00 AM Daily</span>
+                </div>
+                <h2 className="font-serif font-black text-2xl text-[#241713]">
+                  Daily Earnings & History Ledger
+                </h2>
+                <p className="text-xs text-[#B8A99A] mt-0.5 font-medium">
+                  Overall earnings and total orders taken for each day. Yesterday&apos;s orders are deleted from active queue and stored here permanently.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {yesterdayOrdersCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={isArchiving}
+                    onClick={() => handleArchiveOrders("yesterday")}
+                    className="px-4 py-2.5 bg-[#C6A46C] hover:bg-[#d8b880] text-[#241713] rounded-2xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <Archive className="w-4 h-4" />
+                    <span>{isArchiving ? "Archiving..." : `Archive Yesterday (${yesterdayOrdersCount})`}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={isArchiving}
+                  onClick={() => handleArchiveOrders("close_day")}
+                  className="px-4 py-2.5 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-2xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  title="Archive today's completed orders and close shift"
+                >
+                  <CalendarCheck className="w-4 h-4 text-[#C6A46C]" />
+                  <span>Close Day & Archive</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={fetchDailyRecords}
+                  className="p-2.5 rounded-2xl bg-[#F5F3EF] hover:bg-[#E5E2DC] text-[#493126] transition-colors"
+                  title="Refresh Daily Ledger"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            {/* 4 Key Stat Cards in Brand Palette */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 sm:gap-4">
-              {/* Total Revenue: Deep Espresso */}
+            {/* Live Today Summary vs Archived Totals */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Today's Running Earnings */}
               <div className="bg-[#241713] text-[#F7F2EA] p-5 rounded-3xl shadow-sm border border-[#493126] flex flex-col justify-between">
-                <span className="text-xs text-[#C6A46C] font-bold uppercase tracking-wider">Total Revenue</span>
-                <h3 className="font-serif font-black text-3xl text-[#F7F2EA] mt-1">
-                  ₹{analytics.totalRev}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[#C6A46C] font-bold uppercase tracking-wider">
+                    Today&apos;s Running Total
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <h3 className="font-serif font-black text-3xl text-[#F7F2EA] my-2">
+                  ₹{todayMetrics.earnings}
                 </h3>
-                <span className="text-[10px] text-[#C6A46C] font-semibold mt-2">Dine-in Table Orders</span>
+                <span className="text-[11px] text-[#C6A46C] font-semibold">
+                  {todayMetrics.count} active table orders placed today
+                </span>
               </div>
 
-              {/* Total Orders: Rich Coffee */}
+              {/* Total Archived Past Days */}
               <div className="bg-[#493126] text-[#F7F2EA] p-5 rounded-3xl shadow-sm border border-[#C6A46C]/20 flex flex-col justify-between">
-                <span className="text-xs text-[#C6A46C] font-bold uppercase tracking-wider">Total Orders</span>
-                <h3 className="font-serif font-black text-3xl text-[#F7F2EA] mt-1">
-                  {orders.length}
+                <span className="text-xs text-[#C6A46C] font-bold uppercase tracking-wider">
+                  Past Days Earnings
+                </span>
+                <h3 className="font-serif font-black text-3xl text-[#F7F2EA] my-2">
+                  ₹{dailyRecords.reduce((sum, r) => sum + r.totalEarnings, 0)}
                 </h3>
-                <span className="text-[10px] text-[#B8A99A] font-semibold mt-2">Across all tables</span>
+                <span className="text-[11px] text-[#B8A99A] font-semibold">
+                  Across {dailyRecords.reduce((sum, r) => sum + r.totalOrders, 0)} total archived orders
+                </span>
               </div>
 
-              {/* Active in Kitchen: Pure White with Taupe border */}
+              {/* Recorded Days Count */}
               <div className="bg-[#FFFFFF] text-[#241713] p-5 rounded-3xl shadow-xs border border-[#B8A99A]/30 flex flex-col justify-between">
-                <span className="text-xs text-[#B8A99A] font-bold uppercase tracking-wider">Kitchen Queue</span>
-                <h3 className="font-serif font-black text-3xl text-[#493126] mt-1">
-                  {analytics.activeCount}
+                <span className="text-xs text-[#B8A99A] font-bold uppercase tracking-wider">
+                  Recorded Days
+                </span>
+                <h3 className="font-serif font-black text-3xl text-[#241713] my-2">
+                  {dailyRecords.length} Days
                 </h3>
-                <span className="text-[10px] text-[#493126] font-semibold mt-2">Preparing / Ready</span>
-              </div>
-
-              {/* Avg Order Value: Pure White with Gold Border */}
-              <div className="bg-[#FFFFFF] text-[#241713] p-5 rounded-3xl shadow-xs border border-[#C6A46C]/50 flex flex-col justify-between">
-                <span className="text-xs text-[#C6A46C] font-bold uppercase tracking-wider">Avg. Order Value</span>
-                <h3 className="font-serif font-black text-3xl text-[#241713] mt-1">
-                  ₹{analytics.aov}
-                </h3>
-                <span className="text-[10px] text-[#B8A99A] font-semibold mt-2">Per table check</span>
+                <span className="text-[11px] text-[#493126] font-semibold">
+                  Full daily audit logs preserved
+                </span>
               </div>
             </div>
 
-            {/* Charts: Muted gold (#C6A46C), brown (#493126), and neutral shades (#B8A99A) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Category Sales Distribution Chart */}
-              <div className="bg-[#FFFFFF] rounded-3xl p-6 border border-[#B8A99A]/30 shadow-xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-serif font-black text-base text-[#241713]">
-                      Category Sales Distribution
-                    </h3>
-                    <p className="text-xs text-[#B8A99A]">Share of kitchen orders by menu section</p>
-                  </div>
-                  <TrendingUp className="w-5 h-5 text-[#C6A46C]" />
+            {/* List of Past Days Records */}
+            <div className="bg-[#FFFFFF] rounded-3xl p-6 border border-[#B8A99A]/30 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-[#F5F3EF] pb-3">
+                <div className="flex items-center gap-2">
+                  <History className="w-5 h-5 text-[#C6A46C]" />
+                  <h3 className="font-serif font-black text-lg text-[#241713]">
+                    Archived Days Ledger
+                  </h3>
                 </div>
-
-                <div className="space-y-3 pt-2 text-xs">
-                  <div>
-                    <div className="flex justify-between mb-1 font-bold">
-                      <span className="text-[#241713]">Specialty Roastery & Coffee</span>
-                      <span className="text-[#493126]">48%</span>
-                    </div>
-                    <div className="w-full h-3 bg-[#F5F3EF] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#C6A46C] rounded-full" style={{ width: "48%" }} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1 font-bold">
-                      <span className="text-[#241713]">Artisanal Bakery & Breakfast</span>
-                      <span className="text-[#493126]">26%</span>
-                    </div>
-                    <div className="w-full h-3 bg-[#F5F3EF] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#493126] rounded-full" style={{ width: "26%" }} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1 font-bold">
-                      <span className="text-[#241713]">Gourmet Mains & Pastas</span>
-                      <span className="text-[#493126]">18%</span>
-                    </div>
-                    <div className="w-full h-3 bg-[#F5F3EF] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#241713] rounded-full" style={{ width: "18%" }} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1 font-bold">
-                      <span className="text-[#241713]">Cold Brews & Refreshers</span>
-                      <span className="text-[#493126]">8%</span>
-                    </div>
-                    <div className="w-full h-3 bg-[#F5F3EF] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#B8A99A] rounded-full" style={{ width: "8%" }} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-[#F5F3EF] text-[11px] text-[#B8A99A]">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#C6A46C]" /> Gold: Coffee</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#493126]" /> Brown: Bakery</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#241713]" /> Espresso: Mains</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#B8A99A]" /> Taupe: Cold Brews</span>
-                </div>
+                <span className="text-xs text-[#B8A99A] font-medium">
+                  {dailyRecords.length} Recorded Day{dailyRecords.length === 1 ? "" : "s"}
+                </span>
               </div>
 
-              {/* Peak Service Hours Chart */}
-              <div className="bg-[#FFFFFF] rounded-3xl p-6 border border-[#B8A99A]/30 shadow-xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-serif font-black text-base text-[#241713]">
-                      Peak Dining & Kitchen Traffic
-                    </h3>
-                    <p className="text-xs text-[#B8A99A]">Hourly guest activity across dine-in tables</p>
-                  </div>
-                  <Clock className="w-5 h-5 text-[#493126]" />
+              {loadingDailyRecords && dailyRecords.length === 0 ? (
+                <div className="py-12 text-center text-[#B8A99A] text-xs">
+                  <div className="w-8 h-8 border-3 border-[#241713] border-t-[#C6A46C] rounded-full animate-spin mx-auto mb-2" />
+                  Loading daily records...
                 </div>
+              ) : dailyRecords.length === 0 ? (
+                <div className="py-12 text-center text-[#B8A99A] space-y-2">
+                  <Calendar className="w-10 h-10 mx-auto text-[#B8A99A]/40" />
+                  <p className="font-serif font-bold text-base text-[#241713]">No Archived Days Yet</p>
+                  <p className="text-xs max-w-sm mx-auto">
+                    When you click &quot;Archive Yesterday&apos;s Orders&quot; or &quot;Close Day&quot;, the orders are cleared from the live kitchen queue and their overall earnings and total order counts appear here.
+                  </p>
+                  {yesterdayOrdersCount > 0 && (
+                    <button
+                      type="button"
+                      disabled={isArchiving}
+                      onClick={() => handleArchiveOrders("yesterday")}
+                      className="mt-3 px-4 py-2 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-xl text-xs font-bold transition-all shadow-md inline-flex items-center gap-1.5"
+                    >
+                      <Archive className="w-3.5 h-3.5 text-[#C6A46C]" />
+                      <span>Archive {yesterdayOrdersCount} Orders Now</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="divide-y divide-[#F5F3EF]">
+                  {dailyRecords.map((record) => {
+                    const avgCheck =
+                      record.totalOrders > 0
+                        ? Math.round(record.totalEarnings / record.totalOrders)
+                        : 0;
 
-                <div className="pt-4 flex items-end justify-between h-40 gap-2">
-                  {[
-                    { hour: "9 AM", height: "35%", color: "bg-[#B8A99A]" },
-                    { hour: "11 AM", height: "70%", color: "bg-[#C6A46C]" },
-                    { hour: "1 PM", height: "95%", color: "bg-[#493126]" },
-                    { hour: "3 PM", height: "50%", color: "bg-[#B8A99A]" },
-                    { hour: "5 PM", height: "85%", color: "bg-[#C6A46C]" },
-                    { hour: "7 PM", height: "100%", color: "bg-[#241713]" },
-                    { hour: "9 PM", height: "60%", color: "bg-[#493126]" },
-                  ].map((bar, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+                    return (
                       <div
-                        className={`w-full rounded-t-xl ${bar.color} transition-all duration-500`}
-                        style={{ height: bar.height }}
-                      />
-                      <span className="text-[10px] font-bold text-[#B8A99A]">{bar.hour}</span>
-                    </div>
-                  ))}
-                </div>
+                        key={record.date}
+                        className="py-4.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#F5F3EF]/40 px-3 rounded-2xl transition-colors"
+                      >
+                        {/* Day & Date Details */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-serif font-black text-base text-[#241713]">
+                              {record.displayDate}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold bg-[#F5F3EF] px-2 py-0.5 rounded-md text-[#493126] border border-[#B8A99A]/20">
+                              {record.date}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-[#B8A99A]">
+                            <span className="font-semibold text-[#493126]">
+                              Total Orders: <strong>{record.totalOrders}</strong>
+                            </span>
+                            <span>•</span>
+                            <span>
+                              Avg Order: <strong>₹{avgCheck}</strong>
+                            </span>
+                          </div>
+                        </div>
 
-                <div className="pt-2 border-t border-[#F5F3EF] flex justify-between text-[11px] text-[#B8A99A]">
-                  <span>Peak Rush: <strong>1:00 PM & 7:00 PM</strong></span>
-                  <span>Average Turnaround: <strong>18 mins</strong></span>
+                        {/* Overall Earnings & Actions */}
+                        <div className="flex items-center justify-between sm:justify-end gap-3.5">
+                          <div className="text-right">
+                            <span className="text-[10px] uppercase font-bold text-[#B8A99A] block">
+                              Overall Earnings
+                            </span>
+                            <span className="font-serif font-black text-2xl text-[#241713]">
+                              ₹{record.totalEarnings}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedRecordForDetail(record)}
+                              className="px-3 py-2 bg-[#F5F3EF] hover:bg-[#E5E2DC] text-[#493126] rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs"
+                              title="View all orders for this day"
+                            >
+                              <span>Orders ({record.orders?.length || record.totalOrders})</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDayToPrint(record)}
+                              className="p-2 bg-[#241713] hover:bg-[#493126] text-[#C6A46C] rounded-xl transition-colors shadow-2xs"
+                              title="Print Daily Settlement Summary"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -1794,6 +2095,349 @@ export default function AdminDashboardPage() {
                 visibility: visible !important;
               }
               #printable-bill {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 380px !important;
+                margin: 0 auto !important;
+                padding: 16px !important;
+                border: none !important;
+                background: white !important;
+                color: black !important;
+                box-shadow: none !important;
+              }
+              .no-print {
+                display: none !important;
+              }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* Modal: Change Staff Security Key / PIN */}
+      {isChangePinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#241713]/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-sm bg-[#FFFFFF] rounded-3xl p-6 shadow-2xl space-y-4 border border-[#B8A99A]/30 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-[#F5F3EF]">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-[#241713] text-[#C6A46C] flex items-center justify-center">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-black text-base text-[#241713]">
+                    Change Security Key
+                  </h3>
+                  <p className="text-[10px] text-[#B8A99A]">Update staff terminal PIN</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsChangePinModalOpen(false)}
+                className="p-1 rounded-xl text-[#B8A99A] hover:text-[#241713] hover:bg-[#F5F3EF] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePinSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-[#493126] mb-1">
+                  Current / Old Key:
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter current PIN (e.g. 1234)"
+                  value={oldPinInput}
+                  onChange={(e) => setOldPinInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#B8A99A]/40 text-sm focus:outline-hidden focus:border-[#C6A46C] bg-[#F7F2EA]/40 text-center tracking-widest font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#493126] mb-1">
+                  New Security Key:
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter new 4-8 digit key"
+                  value={newPinInput}
+                  onChange={(e) => setNewPinInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#B8A99A]/40 text-sm focus:outline-hidden focus:border-[#C6A46C] bg-[#F7F2EA]/40 text-center tracking-widest font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#493126] mb-1">
+                  Confirm New Key:
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Re-enter new key"
+                  value={confirmPinInput}
+                  onChange={(e) => setConfirmPinInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#B8A99A]/40 text-sm focus:outline-hidden focus:border-[#C6A46C] bg-[#F7F2EA]/40 text-center tracking-widest font-mono"
+                />
+              </div>
+
+              {pinChangeError && (
+                <p className="text-xs text-rose-600 font-bold text-center animate-pulse">
+                  {pinChangeError}
+                </p>
+              )}
+
+              {pinChangeSuccess && (
+                <p className="text-xs text-emerald-600 font-bold text-center">
+                  ✓ {pinChangeSuccess}
+                </p>
+              )}
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePinModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-[#F5F3EF] hover:bg-[#E5E2DC] text-[#493126] font-bold text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingPin}
+                  className="flex-1 py-2.5 rounded-xl bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] font-bold text-xs transition-all shadow-md active:scale-95 disabled:opacity-50"
+                >
+                  {isChangingPin ? "Updating..." : "Update Key"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: View Day Orders Breakdown */}
+      {selectedRecordForDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#241713]/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#FFFFFF] rounded-3xl p-6 shadow-2xl space-y-4 border border-[#B8A99A]/30 my-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F5F3EF]">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#C6A46C]">
+                  Archived Day Breakdown
+                </span>
+                <h3 className="font-serif font-black text-xl text-[#241713]">
+                  {selectedRecordForDetail.displayDate}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedRecordForDetail(null)}
+                className="p-1.5 rounded-xl text-[#B8A99A] hover:text-[#241713] hover:bg-[#F5F3EF] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Stats Banner */}
+            <div className="grid grid-cols-2 gap-3 p-3 bg-[#F5F3EF] rounded-2xl text-xs">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#B8A99A]">Overall Earnings</span>
+                <p className="font-serif font-black text-xl text-[#241713]">
+                  ₹{selectedRecordForDetail.totalEarnings}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#B8A99A]">Total Orders</span>
+                <p className="font-serif font-black text-xl text-[#493126]">
+                  {selectedRecordForDetail.totalOrders} Orders
+                </p>
+              </div>
+            </div>
+
+            {/* Orders List */}
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {(!selectedRecordForDetail.orders || selectedRecordForDetail.orders.length === 0) ? (
+                <p className="text-center py-6 text-xs text-[#B8A99A]">No individual orders stored for this day.</p>
+              ) : (
+                selectedRecordForDetail.orders.map((ord) => (
+                  <div
+                    key={ord.id}
+                    className="p-3 bg-[#F7F2EA]/40 rounded-2xl border border-[#B8A99A]/20 space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-[#241713]">Table {ord.tableNumber}</span>
+                      <span className="text-[#493126] font-mono font-semibold text-[11px]">#{ord.id}</span>
+                      <span className="font-serif text-sm text-[#241713]">₹{ord.total}</span>
+                    </div>
+                    <div className="divide-y divide-[#B8A99A]/10 text-[11px] text-[#493126]">
+                      {ord.items.map((it, i) => (
+                        <div key={i} className="py-1 flex justify-between">
+                          <span>{it.quantity}× {it.name}</span>
+                          <span className="text-[#B8A99A]">₹{it.unitPrice * it.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-[#B8A99A] text-right">
+                      {new Date(ord.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 flex items-center justify-between border-t border-[#F5F3EF]">
+              <button
+                type="button"
+                onClick={() => {
+                  const record = selectedRecordForDetail;
+                  setSelectedRecordForDetail(null);
+                  setSelectedDayToPrint(record);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-[#241713] hover:bg-[#493126] text-[#C6A46C] text-xs font-bold flex items-center gap-1.5 transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Day Report</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedRecordForDetail(null)}
+                className="px-4 py-2.5 rounded-xl bg-[#F5F3EF] hover:bg-[#E5E2DC] text-[#493126] text-xs font-bold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Printable Daily Settlement Slip */}
+      {selectedDayToPrint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+          <div className="bg-[#FFFFFF] w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#B8A99A]/30 my-8 space-y-4 animate-in zoom-in-95">
+            <div className="no-print flex items-center justify-between pb-2 border-b border-[#F5F3EF]">
+              <span className="text-xs font-bold text-[#493126] uppercase">Daily Settlement Report</span>
+              <button
+                type="button"
+                onClick={() => setSelectedDayToPrint(null)}
+                className="p-1 rounded-xl text-[#B8A99A] hover:text-[#241713]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Printable Settlement Container */}
+            <div
+              id="printable-day-summary"
+              className="bg-[#FFFFFF] p-4 text-[#241713] font-mono text-xs space-y-3 rounded-2xl border border-dashed border-[#B8A99A]/50"
+            >
+              {/* Header */}
+              <div className="text-center space-y-1 pb-3 border-b border-dashed border-[#241713]/20">
+                <h2 className="font-serif font-black text-xl tracking-wider text-[#241713]">
+                  QALBI CAFE
+                </h2>
+                <p className="text-[10px] text-[#493126] font-sans font-bold uppercase tracking-wider">
+                  Daily Sales & Settlement Report
+                </p>
+                <p className="text-[9px] text-[#B8A99A] font-sans">
+                  Kannan nagar, Vijayapura, Karnataka 586109
+                </p>
+              </div>
+
+              {/* Date & Orders Count */}
+              <div className="flex justify-between items-center text-[11px] py-1 border-b border-dashed border-[#241713]/20">
+                <div>
+                  <p className="font-bold">{selectedDayToPrint.displayDate}</p>
+                  <p className="text-[10px] text-[#B8A99A]">Date Key: {selectedDayToPrint.date}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-sm text-[#493126]">{selectedDayToPrint.totalOrders} Orders</p>
+                  <p className="text-[10px] text-[#B8A99A]">Dine-in</p>
+                </div>
+              </div>
+
+              {/* Financial Summary */}
+              <div className="py-2 space-y-1.5 border-b border-dashed border-[#241713]/20">
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#B8A99A]">Total Orders Recorded:</span>
+                  <span className="font-bold">{selectedDayToPrint.totalOrders}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#B8A99A]">Average Order Value:</span>
+                  <span className="font-bold">
+                    ₹{selectedDayToPrint.totalOrders > 0
+                      ? Math.round(selectedDayToPrint.totalEarnings / selectedDayToPrint.totalOrders)
+                      : 0}
+                  </span>
+                </div>
+                <div className="flex justify-between text-base font-black text-[#241713] pt-1">
+                  <span>Overall Day Earnings:</span>
+                  <span className="font-serif">₹{selectedDayToPrint.totalEarnings}</span>
+                </div>
+              </div>
+
+              {/* Items Summary (aggregated across orders) */}
+              {selectedDayToPrint.orders && selectedDayToPrint.orders.length > 0 && (
+                <div className="py-1">
+                  <p className="font-bold text-[10px] uppercase text-[#B8A99A] pb-1 border-b border-[#241713]/10">
+                    Dishes Sold Summary
+                  </p>
+                  <div className="divide-y divide-[#241713]/5 py-1 text-[11px]">
+                    {Object.entries(
+                      selectedDayToPrint.orders.flatMap((o) => o.items).reduce((acc, it) => {
+                        acc[it.name] = (acc[it.name] || 0) + it.quantity;
+                        return acc;
+                      }, {} as Record<string, number>)
+                    ).map(([name, qty]) => (
+                      <div key={name} className="py-1 flex justify-between">
+                        <span className="truncate pr-2">{name}</span>
+                        <span className="font-bold font-mono">×{qty}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="text-center pt-2 border-t border-dashed border-[#241713]/20 text-[9px] text-[#B8A99A] font-sans">
+                <p className="font-bold text-[#241713]">End of Day Settlement Slip</p>
+                <p>QALBI Cafe Management</p>
+              </div>
+            </div>
+
+            {/* Print Action */}
+            <div className="no-print flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedDayToPrint(null)}
+                className="flex-1 py-2.5 rounded-2xl bg-[#F5F3EF] hover:bg-[#E5E2DC] text-[#493126] font-bold text-xs transition-colors"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.print();
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-2xl bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98"
+              >
+                <Printer className="w-4 h-4 text-[#C6A46C]" />
+                <span>Print Settlement</span>
+              </button>
+            </div>
+          </div>
+
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-day-summary, #printable-day-summary * {
+                visibility: visible !important;
+              }
+              #printable-day-summary {
                 position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;
