@@ -325,51 +325,6 @@
   .col-span-2 {
     grid-column: span 2 / span 2;
   }
-  .m-1 {
-    margin: var(--spacing);
-  }
-  .m-2 {
-    margin: calc(var(--spacing) * 2);
-  }
-  .m-3 {
-    margin: calc(var(--spacing) * 3);
-  }
-  .m-4 {
-    margin: calc(var(--spacing) * 4);
-  }
-  .m-5 {
-    margin: calc(var(--spacing) * 5);
-  }
-  .m-6 {
-    margin: calc(var(--spacing) * 6);
-  }
-  .m-7 {
-    margin: calc(var(--spacing) * 7);
-  }
-  .m-8 {
-    margin: calc(var(--spacing) * 8);
-  }
-  .m-9 {
-    margin: calc(var(--spacing) * 9);
-  }
-  .m-10 {
-    margin: calc(var(--spacing) * 10);
-  }
-  .m-11 {
-    margin: calc(var(--spacing) * 11);
-  }
-  .m-12 {
-    margin: calc(var(--spacing) * 12);
-  }
-  .m-13 {
-    margin: calc(var(--spacing) * 13);
-  }
-  .m-14 {
-    margin: calc(var(--spacing) * 14);
-  }
-  .m-15 {
-    margin: calc(var(--spacing) * 15);
-  }
   .mx-auto {
     margin-inline: auto;
   }
@@ -1487,6 +1442,9 @@
   }
   .text-\[\#493126\] {
     color: #493126;
+  }
+  .text-\[\#493126\]\/80 {
+    color: color-mix(in oklab, #493126 80%, transparent);
   }
   .text-\[\#B8A99A\] {
     color: #B8A99A;

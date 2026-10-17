@@ -101,9 +101,21 @@ export default function AdminDashboardPage() {
     isFeatured: false,
   });
 
+  const staffFetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const pin =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("qalbi_staff_pin") ||
+          localStorage.getItem("qalbi_staff_pin") ||
+          "1234"
+        : "1234";
+    const headers = new Headers(init.headers || {});
+    headers.set("x-staff-pin", pin);
+    return fetch(input, { ...init, headers });
+  };
+
   const fetchOrders = async () => {
     try {
-      const res = await fetch("/api/orders");
+      const res = await staffFetch("/api/orders");
       const data = await res.json();
       if (data.success && data.orders) {
         setOrders(data.orders);
@@ -117,7 +129,7 @@ export default function AdminDashboardPage() {
 
   const fetchMenu = async () => {
     try {
-      const res = await fetch("/api/menu");
+      const res = await staffFetch("/api/menu");
       const data = await res.json();
       if (data.success && data.items) {
         setMenuItems(data.items);
@@ -131,7 +143,7 @@ export default function AdminDashboardPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("/api/categories");
+      const res = await staffFetch("/api/categories");
       const data = await res.json();
       if (data.success && data.categories && data.categories.length > 0) {
         setCategories(data.categories);
@@ -144,7 +156,7 @@ export default function AdminDashboardPage() {
   const fetchDailyRecords = async () => {
     try {
       setLoadingDailyRecords(true);
-      const res = await fetch("/api/archive");
+      const res = await staffFetch("/api/archive");
       const data = await res.json();
       if (data.success && data.records) {
         setDailyRecords(data.records);
@@ -166,7 +178,7 @@ export default function AdminDashboardPage() {
 
     setIsArchiving(true);
     try {
-      const res = await fetch("/api/archive", {
+      const res = await staffFetch("/api/archive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode }),
@@ -246,7 +258,7 @@ export default function AdminDashboardPage() {
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
-      const res = await fetch("/api/orders", {
+      const res = await staffFetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId, status: newStatus }),
@@ -270,7 +282,7 @@ export default function AdminDashboardPage() {
 
   const handleTogglePaymentStatus = async (orderId: string, newPaymentStatus: PaymentStatus) => {
     try {
-      const res = await fetch("/api/orders", {
+      const res = await staffFetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId, paymentStatus: newPaymentStatus }),
@@ -288,7 +300,7 @@ export default function AdminDashboardPage() {
 
   const handleToggleAvailability = async (itemId: string, current: boolean) => {
     try {
-      const res = await fetch("/api/menu", {
+      const res = await staffFetch("/api/menu", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: itemId, isAvailable: !current }),
@@ -307,10 +319,12 @@ export default function AdminDashboardPage() {
   const handleDeleteItem = async (itemId: string) => {
     if (!confirm("Are you sure you want to delete this menu item?")) return;
     try {
-      const res = await fetch(`/api/menu?id=${itemId}`, { method: "DELETE" });
+      const res = await staffFetch(`/api/menu?id=${itemId}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         setMenuItems((prev) => prev.filter((i) => i.id !== itemId));
+      } else {
+        alert(data.error || "Failed to delete item");
       }
     } catch (err) {
       console.error("Failed to delete item:", err);
@@ -346,6 +360,8 @@ export default function AdminDashboardPage() {
     if (isValid) {
       if (typeof window !== "undefined") {
         sessionStorage.setItem("qalbi_staff_auth", "true");
+        sessionStorage.setItem("qalbi_staff_pin", pin);
+        localStorage.setItem("qalbi_staff_pin", pin);
       }
       setIsStaffAuthenticated(true);
       setPinError(false);
@@ -376,7 +392,7 @@ export default function AdminDashboardPage() {
 
     setIsChangingPin(true);
     try {
-      const res = await fetch("/api/admin/pin", {
+      const res = await staffFetch("/api/admin/pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ oldPin: oldPinInput, newPin: newPinInput }),
@@ -384,6 +400,7 @@ export default function AdminDashboardPage() {
       const data = await res.json();
       if (data.success) {
         if (typeof window !== "undefined") {
+          sessionStorage.setItem("qalbi_staff_pin", newPinInput);
           localStorage.setItem("qalbi_staff_pin", newPinInput);
         }
         setPinChangeSuccess("Security PIN updated successfully!");
@@ -401,6 +418,7 @@ export default function AdminDashboardPage() {
       if (typeof window !== "undefined") {
         const currentSaved = localStorage.getItem("qalbi_staff_pin") || "1234";
         if (oldPinInput === currentSaved || oldPinInput === "1234" || oldPinInput === "7411") {
+          sessionStorage.setItem("qalbi_staff_pin", newPinInput);
           localStorage.setItem("qalbi_staff_pin", newPinInput);
           setPinChangeSuccess("Security PIN updated successfully!");
           setTimeout(() => {
@@ -419,6 +437,7 @@ export default function AdminDashboardPage() {
   const handleLogout = () => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("qalbi_staff_auth");
+      sessionStorage.removeItem("qalbi_staff_pin");
     }
     setIsStaffAuthenticated(false);
   };
@@ -454,8 +473,26 @@ export default function AdminDashboardPage() {
           ctx.drawImage(img, 0, 0, width, height);
           const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
           setNewItem((prev) => ({ ...prev, imageUrl: compressedDataUrl }));
+
+          // Upload to Vercel Blob for persistent public CDN image URL
+          staffFetch("/api/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataUrl: compressedDataUrl }),
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.success && data.url) {
+                setNewItem((prev) => ({ ...prev, imageUrl: data.url }));
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              setImageCompressing(false);
+            });
+        } else {
+          setImageCompressing(false);
         }
-        setImageCompressing(false);
       };
       img.onerror = () => setImageCompressing(false);
       img.src = event.target?.result as string;
@@ -467,7 +504,7 @@ export default function AdminDashboardPage() {
   const handleAddCategory = async (name: string) => {
     if (!name.trim()) return;
     try {
-      const res = await fetch("/api/categories", {
+      const res = await staffFetch("/api/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim() }),
@@ -489,7 +526,7 @@ export default function AdminDashboardPage() {
     if (catId === "all") return;
     if (!confirm("Delete this category? Items in this category will remain, but the filter will be removed.")) return;
     try {
-      const res = await fetch("/api/categories", {
+      const res = await staffFetch("/api/categories", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: catId }),
@@ -506,7 +543,7 @@ export default function AdminDashboardPage() {
   const handleClearAllItems = async () => {
     if (!confirm("Are you sure you want to clear all sample menu items? This will allow you to build your own real cafe menu from scratch.")) return;
     try {
-      const res = await fetch("/api/menu?action=clear_all", { method: "DELETE" });
+      const res = await staffFetch("/api/menu?action=clear_all", { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         setMenuItems([]);
@@ -521,12 +558,12 @@ export default function AdminDashboardPage() {
     if (!newItem.name || !newItem.price) return;
 
     try {
-      const res = await fetch("/api/menu", {
+      const res = await staffFetch("/api/menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newItem,
-          imageUrl: newItem.imageUrl || "https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=800&q=80",
+          imageUrl: newItem.imageUrl || "",
           price: Number(newItem.price),
           isAvailable: true,
         }),
@@ -537,7 +574,7 @@ export default function AdminDashboardPage() {
         setIsAddModalOpen(false);
         setNewItem({
           name: "",
-          category: categories.find((c) => c.id !== "all")?.id || "coffee",
+          category: categories.find((c) => c.id !== "all")?.id || "all",
           price: "",
           description: "",
           imageUrl: "",

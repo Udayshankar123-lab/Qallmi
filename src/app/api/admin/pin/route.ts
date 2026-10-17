@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getStaffPin, setStaffPin } from "@/lib/db";
+import { isRateLimited, getClientIp } from "@/lib/security";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const currentPin = getStaffPin();
+    const currentPin = await getStaffPin();
     return NextResponse.json({ success: true, hasCustomPin: currentPin !== "1234" });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get PIN status";
@@ -13,13 +16,21 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
     const body = await request.json();
     const { action, pin, oldPin, newPin } = body;
 
-    const currentPin = getStaffPin();
+    const currentPin = await getStaffPin();
 
     // Verify PIN action (e.g., login check)
     if (action === "verify") {
+      if (isRateLimited(`pin-verify-${ip}`, 12, 5 * 60 * 1000)) {
+        return NextResponse.json(
+          { success: false, error: "Too many login attempts. Locked for 5 minutes." },
+          { status: 429 }
+        );
+      }
+
       const isValid = pin === currentPin || pin === "1234" || pin === "7411";
       return NextResponse.json({ success: true, isValid });
     }
@@ -34,20 +45,21 @@ export async function POST(request: Request) {
 
     // Verify old PIN
     if (oldPin !== currentPin && oldPin !== "1234" && oldPin !== "7411") {
+      isRateLimited(`pin-verify-${ip}`, 12, 5 * 60 * 1000);
       return NextResponse.json(
         { success: false, error: "Current PIN is incorrect. Please try again." },
         { status: 401 }
       );
     }
 
-    if (newPin.length < 4) {
+    if (String(newPin).length < 4) {
       return NextResponse.json(
         { success: false, error: "New PIN must be at least 4 digits" },
         { status: 400 }
       );
     }
 
-    setStaffPin(newPin);
+    await setStaffPin(String(newPin));
     return NextResponse.json({ success: true, message: "Staff PIN updated successfully" });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to update staff PIN";

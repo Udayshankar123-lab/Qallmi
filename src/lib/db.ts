@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { MenuItem, Order, OrderStatus, PaymentStatus, Category, DailyEarningsRecord } from "@/types/cafe";
 import { INITIAL_MENU_ITEMS, INITIAL_CATEGORIES } from "./initialData";
+import { writeBlobState, readBlobState } from "./blobStorage";
 
 const IS_VERCEL = process.env.VERCEL === "1";
 const DATA_DIR = IS_VERCEL ? path.join("/tmp", "qalbi_data") : path.join(process.cwd(), "data");
@@ -16,276 +17,201 @@ function ensureDirectory() {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    // Copy initial data to /tmp if running on Vercel
-    if (IS_VERCEL) {
-      const srcMenu = path.join(process.cwd(), "data", "menu.json");
-      const srcOrders = path.join(process.cwd(), "data", "orders.json");
-      const srcCategories = path.join(process.cwd(), "data", "categories.json");
-      const srcDaily = path.join(process.cwd(), "data", "daily_history.json");
-      const srcPin = path.join(process.cwd(), "data", "pin.json");
-
-      if (!fs.existsSync(MENU_FILE) && fs.existsSync(srcMenu)) {
-        fs.copyFileSync(srcMenu, MENU_FILE);
-      }
-      if (!fs.existsSync(ORDERS_FILE) && fs.existsSync(srcOrders)) {
-        fs.copyFileSync(srcOrders, ORDERS_FILE);
-      }
-      if (!fs.existsSync(CATEGORIES_FILE) && fs.existsSync(srcCategories)) {
-        fs.copyFileSync(srcCategories, CATEGORIES_FILE);
-      }
-      if (!fs.existsSync(DAILY_HISTORY_FILE) && fs.existsSync(srcDaily)) {
-        fs.copyFileSync(srcDaily, DAILY_HISTORY_FILE);
-      }
-      if (!fs.existsSync(PIN_FILE) && fs.existsSync(srcPin)) {
-        fs.copyFileSync(srcPin, PIN_FILE);
-      }
-    }
-  } catch (err) {
-    // Graceful fallback to memory
+  } catch {
+    // In-memory fallback
   }
 }
 
-// In-memory fallback if filesystem write is restricted
+// In-memory runtime cache
 let memoryDailyRecords: DailyEarningsRecord[] = [];
 let memoryStaffPin: string = "1234";
 let memoryCategories: Category[] = [...INITIAL_CATEGORIES];
 let memoryMenu: MenuItem[] = [...INITIAL_MENU_ITEMS];
-let memoryOrders: Order[] = [
-  {
-    id: "QLM-1021",
-    tableNumber: "04",
-    customerName: "Aarav S.",
-    customerPhone: "+91 98765 43210",
-    items: [
-      {
-        id: "c-1",
-        menuItemId: "m-1",
-        name: "Signature Spanish Latte",
-        unitPrice: 285,
-        quantity: 2,
-        selectedSize: "Large (350ml)",
-        selectedOptions: { "Milk Choice": "Oat Milk" },
-        imageUrl: "https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=800&q=80",
-      },
-      {
-        id: "c-2",
-        menuItemId: "m-11",
-        name: "Butter Flaky Almond Croissant",
-        unitPrice: 210,
-        quantity: 1,
-        imageUrl: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80",
-      },
-    ],
-    subtotal: 780,
-    tax: 39,
-    total: 819,
-    status: "preparing",
-    paymentStatus: "paid",
-    paymentMethod: "upi",
-    transactionId: "UPI-TXN-908234",
-    specialInstructions: "Less ice in both cups please.",
-    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "QLM-1020",
-    tableNumber: "02",
-    customerName: "Priya M.",
-    items: [
-      {
-        id: "c-3",
-        menuItemId: "m-5",
-        name: "Truffle Mushroom Sourdough Toast",
-        unitPrice: 400,
-        quantity: 1,
-        selectedOptions: { "Egg Add-on": "Poached Farm Egg" },
-        imageUrl: "https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=800&q=80",
-      },
-      {
-        id: "c-4",
-        menuItemId: "m-4",
-        name: "Ceremonial Matcha Cloud Latte",
-        unitPrice: 300,
-        quantity: 1,
-        selectedSize: "Iced (350ml)",
-        imageUrl: "https://images.unsplash.com/photo-1536256263959-770b48d82b0a?auto=format&fit=crop&w=800&q=80",
-      },
-    ],
-    subtotal: 700,
-    tax: 35,
-    total: 735,
-    status: "ready",
-    paymentStatus: "paid",
-    paymentMethod: "card",
-    transactionId: "CARD-AUTH-65481",
-    createdAt: new Date(Date.now() - 32 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-  },
-];
+let memoryOrders: Order[] = [];
+let isStateInitialized = false;
 
-export function getMenuItems(): MenuItem[] {
+// Fast initial memory populate from disk if available
+try {
+  ensureDirectory();
+  if (fs.existsSync(MENU_FILE)) {
+    const raw = fs.readFileSync(MENU_FILE, "utf-8");
+    memoryMenu = JSON.parse(raw);
+  }
+  if (fs.existsSync(CATEGORIES_FILE)) {
+    const raw = fs.readFileSync(CATEGORIES_FILE, "utf-8");
+    memoryCategories = JSON.parse(raw);
+  }
+  if (fs.existsSync(ORDERS_FILE)) {
+    const raw = fs.readFileSync(ORDERS_FILE, "utf-8");
+    memoryOrders = JSON.parse(raw);
+  }
+  if (fs.existsSync(PIN_FILE)) {
+    const raw = fs.readFileSync(PIN_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed?.pin) memoryStaffPin = String(parsed.pin);
+  }
+  if (fs.existsSync(DAILY_HISTORY_FILE)) {
+    const raw = fs.readFileSync(DAILY_HISTORY_FILE, "utf-8");
+    memoryDailyRecords = JSON.parse(raw);
+  }
+} catch {
+  // Use memory defaults
+}
+
+// Write local files safely
+function writeLocalFile(filePath: string, data: unknown) {
   try {
     ensureDirectory();
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  } catch {
+    // Non-fatal if filesystem is read-only
+  }
+}
+
+/* ---------------- MENU ITEMS ---------------- */
+
+export async function getMenuItems(): Promise<MenuItem[]> {
+  try {
+    // Check cloud blob state first for authoritative distributed persistence
+    const cloudMenu = await readBlobState<MenuItem[] | null>("menu", null);
+    if (cloudMenu !== null && Array.isArray(cloudMenu)) {
+      memoryMenu = cloudMenu;
+      writeLocalFile(MENU_FILE, cloudMenu);
+      return cloudMenu;
+    }
+
+    // Fallback to local file or memory
     if (fs.existsSync(MENU_FILE)) {
       const data = fs.readFileSync(MENU_FILE, "utf-8");
-      return JSON.parse(data);
-    } else {
-      fs.writeFileSync(MENU_FILE, JSON.stringify(INITIAL_MENU_ITEMS, null, 2));
-      return INITIAL_MENU_ITEMS;
+      memoryMenu = JSON.parse(data);
+      return memoryMenu;
     }
-  } catch (err) {
-    console.error("Error reading menu file, falling back to memory:", err);
+    return memoryMenu;
+  } catch {
     return memoryMenu;
   }
 }
 
-export function saveMenuItem(item: MenuItem): MenuItem {
-  try {
-    ensureDirectory();
-    const items = getMenuItems();
-    const index = items.findIndex((i) => i.id === item.id);
-    if (index >= 0) {
-      items[index] = item;
-    } else {
-      items.unshift(item);
-    }
-    fs.writeFileSync(MENU_FILE, JSON.stringify(items, null, 2));
+export async function saveMenuItem(item: MenuItem): Promise<MenuItem> {
+  const items = await getMenuItems();
+  const index = items.findIndex((i) => i.id === item.id);
+  if (index >= 0) {
+    items[index] = item;
+  } else {
+    items.unshift(item);
+  }
+
+  memoryMenu = items;
+  writeLocalFile(MENU_FILE, items);
+  await writeBlobState("menu", items);
+  return item;
+}
+
+export async function toggleItemAvailability(id: string, isAvailable: boolean): Promise<boolean> {
+  const items = await getMenuItems();
+  const item = items.find((i) => i.id === id);
+  if (item) {
+    item.isAvailable = isAvailable;
     memoryMenu = items;
-    return item;
-  } catch (err) {
-    console.error("Error saving menu item:", err);
-    const index = memoryMenu.findIndex((i) => i.id === item.id);
-    if (index >= 0) {
-      memoryMenu[index] = item;
-    } else {
-      memoryMenu.unshift(item);
+    writeLocalFile(MENU_FILE, items);
+    await writeBlobState("menu", items);
+    return true;
+  }
+  return false;
+}
+
+export async function deleteMenuItem(id: string): Promise<boolean> {
+  const items = (await getMenuItems()).filter((i) => i.id !== id);
+  memoryMenu = items;
+  writeLocalFile(MENU_FILE, items);
+  await writeBlobState("menu", items);
+  return true;
+}
+
+export async function clearMenuItems(): Promise<boolean> {
+  memoryMenu = [];
+  writeLocalFile(MENU_FILE, []);
+  await writeBlobState("menu", []);
+  return true;
+}
+
+/* ---------------- CATEGORIES ---------------- */
+
+export async function getCategories(): Promise<Category[]> {
+  try {
+    const cloudCategories = await readBlobState<Category[] | null>("categories", null);
+    if (cloudCategories !== null && Array.isArray(cloudCategories) && cloudCategories.length > 0) {
+      memoryCategories = cloudCategories;
+      writeLocalFile(CATEGORIES_FILE, cloudCategories);
+      return cloudCategories;
     }
-    return item;
-  }
-}
 
-export function toggleItemAvailability(id: string, isAvailable: boolean): boolean {
-  try {
-    const items = getMenuItems();
-    const item = items.find((i) => i.id === id);
-    if (item) {
-      item.isAvailable = isAvailable;
-      fs.writeFileSync(MENU_FILE, JSON.stringify(items, null, 2));
-      memoryMenu = items;
-      return true;
-    }
-    return false;
-  } catch (err) {
-    console.error("Error toggling item availability:", err);
-    const item = memoryMenu.find((i) => i.id === id);
-    if (item) {
-      item.isAvailable = isAvailable;
-      return true;
-    }
-    return false;
-  }
-}
-
-export function deleteMenuItem(id: string): boolean {
-  try {
-    const items = getMenuItems().filter((i) => i.id !== id);
-    fs.writeFileSync(MENU_FILE, JSON.stringify(items, null, 2));
-    memoryMenu = items;
-    return true;
-  } catch (err) {
-    memoryMenu = memoryMenu.filter((i) => i.id !== id);
-    return true;
-  }
-}
-
-export function clearMenuItems(): boolean {
-  try {
-    ensureDirectory();
-    fs.writeFileSync(MENU_FILE, JSON.stringify([], null, 2));
-    memoryMenu = [];
-    return true;
-  } catch (err) {
-    memoryMenu = [];
-    return true;
-  }
-}
-
-export function getCategories(): Category[] {
-  try {
-    ensureDirectory();
     if (fs.existsSync(CATEGORIES_FILE)) {
       const data = fs.readFileSync(CATEGORIES_FILE, "utf-8");
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        memoryCategories = parsed;
         return parsed;
       }
     }
-    // Fallback to initial
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(INITIAL_CATEGORIES, null, 2));
-    return INITIAL_CATEGORIES;
-  } catch (err) {
+    return memoryCategories;
+  } catch {
     return memoryCategories;
   }
 }
 
-export function saveCategory(category: Category): Category {
-  try {
-    ensureDirectory();
-    const categories = getCategories();
-    const index = categories.findIndex((c) => c.id === category.id);
-    if (index >= 0) {
-      categories[index] = category;
-    } else {
-      categories.push(category);
-    }
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2));
-    memoryCategories = categories;
-    return category;
-  } catch (err) {
-    const index = memoryCategories.findIndex((c) => c.id === category.id);
-    if (index >= 0) {
-      memoryCategories[index] = category;
-    } else {
-      memoryCategories.push(category);
-    }
-    return category;
+export async function saveCategory(category: Category): Promise<Category> {
+  const categories = await getCategories();
+  const index = categories.findIndex((c) => c.id === category.id);
+  if (index >= 0) {
+    categories[index] = category;
+  } else {
+    categories.push(category);
   }
+
+  memoryCategories = categories;
+  writeLocalFile(CATEGORIES_FILE, categories);
+  await writeBlobState("categories", categories);
+  return category;
 }
 
-export function deleteCategory(id: string): boolean {
-  if (id === "all") return false; // Prevent deleting "all"
-  try {
-    const categories = getCategories().filter((c) => c.id !== id);
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2));
-    memoryCategories = categories;
-    return true;
-  } catch (err) {
-    memoryCategories = memoryCategories.filter((c) => c.id !== id);
-    return true;
-  }
+export async function deleteCategory(id: string): Promise<boolean> {
+  if (id === "all") return false; // Never delete 'all'
+  const categories = (await getCategories()).filter((c) => c.id !== id);
+  memoryCategories = categories;
+  writeLocalFile(CATEGORIES_FILE, categories);
+  await writeBlobState("categories", categories);
+  return true;
 }
 
-export function getOrders(): Order[] {
+/* ---------------- ORDERS ---------------- */
+
+export async function getOrders(): Promise<Order[]> {
   try {
-    ensureDirectory();
+    const cloudOrders = await readBlobState<Order[] | null>("orders", null);
+    if (cloudOrders !== null && Array.isArray(cloudOrders)) {
+      memoryOrders = cloudOrders;
+      writeLocalFile(ORDERS_FILE, cloudOrders);
+      return cloudOrders;
+    }
+
     if (fs.existsSync(ORDERS_FILE)) {
       const data = fs.readFileSync(ORDERS_FILE, "utf-8");
-      return JSON.parse(data);
-    } else {
-      fs.writeFileSync(ORDERS_FILE, JSON.stringify(memoryOrders, null, 2));
+      memoryOrders = JSON.parse(data);
       return memoryOrders;
     }
-  } catch (err) {
+    return memoryOrders;
+  } catch {
     return memoryOrders;
   }
 }
 
-export function getOrderById(id: string): Order | undefined {
-  const orders = getOrders();
+export async function getOrderById(id: string): Promise<Order | undefined> {
+  const orders = await getOrders();
   return orders.find((o) => o.id.toLowerCase() === id.toLowerCase());
 }
 
-export function createOrder(orderInput: Omit<Order, "id" | "createdAt" | "updatedAt">): Order {
+export async function createOrder(orderInput: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<Order> {
   const idNumber = Math.floor(1000 + Math.random() * 9000);
   const newOrder: Order = {
     ...orderInput,
@@ -294,55 +220,53 @@ export function createOrder(orderInput: Omit<Order, "id" | "createdAt" | "update
     updatedAt: new Date().toISOString(),
   };
 
-  try {
-    ensureDirectory();
-    const orders = getOrders();
-    orders.unshift(newOrder);
-    fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
-    memoryOrders = orders;
-  } catch (err) {
-    memoryOrders.unshift(newOrder);
-  }
+  const orders = await getOrders();
+  orders.unshift(newOrder);
+
+  memoryOrders = orders;
+  writeLocalFile(ORDERS_FILE, orders);
+  await writeBlobState("orders", orders);
 
   return newOrder;
 }
 
-export function updateOrderStatus(
+export async function updateOrderStatus(
   id: string,
   status?: OrderStatus,
   paymentStatus?: PaymentStatus
-): Order | null {
-  try {
-    const orders = getOrders();
-    const order = orders.find((o) => o.id.toLowerCase() === id.toLowerCase());
-    if (order) {
-      if (status) order.status = status;
-      if (paymentStatus) order.paymentStatus = paymentStatus;
-      order.updatedAt = new Date().toISOString();
-      fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
-      memoryOrders = orders;
-      return order;
-    }
-    return null;
-  } catch (err) {
-    const order = memoryOrders.find((o) => o.id.toLowerCase() === id.toLowerCase());
-    if (order) {
-      if (status) order.status = status;
-      if (paymentStatus) order.paymentStatus = paymentStatus;
-      order.updatedAt = new Date().toISOString();
-      return order;
-    }
-    return null;
+): Promise<Order | null> {
+  const orders = await getOrders();
+  const order = orders.find((o) => o.id.toLowerCase() === id.toLowerCase());
+  if (order) {
+    if (status) order.status = status;
+    if (paymentStatus) order.paymentStatus = paymentStatus;
+    order.updatedAt = new Date().toISOString();
+
+    memoryOrders = orders;
+    writeLocalFile(ORDERS_FILE, orders);
+    await writeBlobState("orders", orders);
+    return order;
   }
+  return null;
 }
 
-export function getStaffPin(): string {
+/* ---------------- STAFF PIN ---------------- */
+
+export async function getStaffPin(): Promise<string> {
   try {
-    ensureDirectory();
+    const cloudPin = await readBlobState<{ pin: string } | null>("pin", null);
+    if (cloudPin && cloudPin.pin) {
+      memoryStaffPin = String(cloudPin.pin);
+      return memoryStaffPin;
+    }
+
     if (fs.existsSync(PIN_FILE)) {
       const data = fs.readFileSync(PIN_FILE, "utf-8");
       const parsed = JSON.parse(data);
-      if (parsed && parsed.pin) return String(parsed.pin);
+      if (parsed?.pin) {
+        memoryStaffPin = String(parsed.pin);
+        return memoryStaffPin;
+      }
     }
   } catch {
     // fallback
@@ -350,28 +274,32 @@ export function getStaffPin(): string {
   return memoryStaffPin || "1234";
 }
 
-export function setStaffPin(newPin: string): boolean {
-  try {
-    ensureDirectory();
-    const data = { pin: newPin, updatedAt: new Date().toISOString() };
-    fs.writeFileSync(PIN_FILE, JSON.stringify(data, null, 2));
-    memoryStaffPin = newPin;
-    return true;
-  } catch {
-    memoryStaffPin = newPin;
-    return true;
-  }
+export async function setStaffPin(newPin: string): Promise<boolean> {
+  memoryStaffPin = newPin;
+  const pinObj = { pin: newPin, updatedAt: new Date().toISOString() };
+  writeLocalFile(PIN_FILE, pinObj);
+  await writeBlobState("pin", pinObj);
+  return true;
 }
 
-export function getDailyRecords(): DailyEarningsRecord[] {
+/* ---------------- DAILY ARCHIVE & EARNINGS ---------------- */
+
+export async function getDailyRecords(): Promise<DailyEarningsRecord[]> {
   try {
-    ensureDirectory();
+    const cloudRecords = await readBlobState<DailyEarningsRecord[] | null>("daily_history", null);
+    if (cloudRecords !== null && Array.isArray(cloudRecords)) {
+      memoryDailyRecords = cloudRecords.sort((a, b) => b.date.localeCompare(a.date));
+      writeLocalFile(DAILY_HISTORY_FILE, memoryDailyRecords);
+      return memoryDailyRecords;
+    }
+
     if (fs.existsSync(DAILY_HISTORY_FILE)) {
       const data = fs.readFileSync(DAILY_HISTORY_FILE, "utf-8");
       const records: DailyEarningsRecord[] = JSON.parse(data);
-      return Array.isArray(records)
-        ? records.sort((a, b) => b.date.localeCompare(a.date))
-        : [];
+      if (Array.isArray(records)) {
+        memoryDailyRecords = records.sort((a, b) => b.date.localeCompare(a.date));
+        return memoryDailyRecords;
+      }
     }
     return memoryDailyRecords.sort((a, b) => b.date.localeCompare(a.date));
   } catch {
@@ -379,14 +307,10 @@ export function getDailyRecords(): DailyEarningsRecord[] {
   }
 }
 
-export function saveDailyRecords(records: DailyEarningsRecord[]) {
-  try {
-    ensureDirectory();
-    fs.writeFileSync(DAILY_HISTORY_FILE, JSON.stringify(records, null, 2));
-    memoryDailyRecords = records;
-  } catch {
-    memoryDailyRecords = records;
-  }
+export async function saveDailyRecords(records: DailyEarningsRecord[]): Promise<void> {
+  memoryDailyRecords = records;
+  writeLocalFile(DAILY_HISTORY_FILE, records);
+  await writeBlobState("daily_history", records);
 }
 
 function toISTDateKey(isoOrDate: string | Date): string {
@@ -415,20 +339,18 @@ function toDisplayDateString(dateKey: string): string {
   }
 }
 
-export function archivePastOrders(mode: "yesterday" | "all_past" | "close_day" = "yesterday"): {
+export async function archivePastOrders(mode: "yesterday" | "all_past" | "close_day" = "yesterday"): Promise<{
   archivedCount: number;
   records: DailyEarningsRecord[];
   remainingOrders: Order[];
-} {
-  ensureDirectory();
-  const allOrders = getOrders();
+}> {
+  const allOrders = await getOrders();
   const todayKey = toISTDateKey(new Date());
 
   let ordersToArchive: Order[] = [];
   let remainingOrders: Order[] = [];
 
   if (mode === "close_day") {
-    // Close Day: Archive today's completed/served orders or all orders from current day
     ordersToArchive = allOrders.filter(
       (o) => o.status === "completed" || toISTDateKey(o.createdAt) < todayKey
     );
@@ -436,32 +358,30 @@ export function archivePastOrders(mode: "yesterday" | "all_past" | "close_day" =
       (o) => !(o.status === "completed" || toISTDateKey(o.createdAt) < todayKey)
     );
   } else {
-    // Yesterday / past orders: strictly any order created before today's IST date
     ordersToArchive = allOrders.filter((o) => toISTDateKey(o.createdAt) < todayKey);
     remainingOrders = allOrders.filter((o) => toISTDateKey(o.createdAt) >= todayKey);
   }
 
   if (ordersToArchive.length === 0) {
+    const records = await getDailyRecords();
     return {
       archivedCount: 0,
-      records: getDailyRecords(),
+      records,
       remainingOrders: allOrders,
     };
   }
 
-  const existingRecords = getDailyRecords();
+  const existingRecords = await getDailyRecords();
   const recordsMap = new Map<string, DailyEarningsRecord>();
   for (const rec of existingRecords) {
     recordsMap.set(rec.date, rec);
   }
 
-  // Group orders to archive by their date
   for (const order of ordersToArchive) {
     const dateKey = toISTDateKey(order.createdAt);
     const existing = recordsMap.get(dateKey);
 
     if (existing) {
-      // Avoid duplicate order IDs
       const orderExists = existing.orders.some((o) => o.id === order.id);
       if (!orderExists) {
         existing.orders.unshift(order);
@@ -487,16 +407,11 @@ export function archivePastOrders(mode: "yesterday" | "all_past" | "close_day" =
     b.date.localeCompare(a.date)
   );
 
-  // Persist updated records
-  saveDailyRecords(updatedRecords);
+  await saveDailyRecords(updatedRecords);
 
-  // Persist remaining orders to orders.json (deleting yesterday's archived orders)
-  try {
-    fs.writeFileSync(ORDERS_FILE, JSON.stringify(remainingOrders, null, 2));
-    memoryOrders = remainingOrders;
-  } catch {
-    memoryOrders = remainingOrders;
-  }
+  memoryOrders = remainingOrders;
+  writeLocalFile(ORDERS_FILE, remainingOrders);
+  await writeBlobState("orders", remainingOrders);
 
   return {
     archivedCount: ordersToArchive.length,
@@ -505,14 +420,8 @@ export function archivePastOrders(mode: "yesterday" | "all_past" | "close_day" =
   };
 }
 
-export function deleteDailyRecord(date: string): boolean {
-  try {
-    ensureDirectory();
-    const records = getDailyRecords().filter((r) => r.date !== date);
-    saveDailyRecords(records);
-    return true;
-  } catch {
-    return false;
-  }
+export async function deleteDailyRecord(date: string): Promise<boolean> {
+  const records = (await getDailyRecords()).filter((r) => r.date !== date);
+  await saveDailyRecords(records);
+  return true;
 }
-

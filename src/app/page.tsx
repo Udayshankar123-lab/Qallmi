@@ -191,6 +191,16 @@ function CafeMainView() {
                 />
               ))}
             </div>
+          ) : menuItems.length === 0 ? (
+            <div className="py-16 text-center bg-[#FFFFFF] rounded-3xl border border-[#B8A99A]/30 p-8 shadow-sm">
+              <Coffee className="w-12 h-12 text-[#C6A46C] mx-auto mb-3 animate-pulse" />
+              <h3 className="font-serif font-black text-lg text-[#241713]">
+                Welcome to QALBI Cafe!
+              </h3>
+              <p className="text-xs text-[#493126]/80 mt-1.5 max-w-sm mx-auto leading-relaxed">
+                Our staff is updating today&apos;s fresh cafe dishes. Please ask our staff at the counter to order hot tea, coffee, and fresh snacks!
+              </p>
+            </div>
           ) : filteredItems.length === 0 ? (
             <div className="py-16 text-center bg-[#FFFFFF] rounded-3xl border border-[#B8A99A]/30 p-6 shadow-sm">
               <Coffee className="w-12 h-12 text-[#C6A46C] mx-auto mb-2.5 animate-bounce" />
