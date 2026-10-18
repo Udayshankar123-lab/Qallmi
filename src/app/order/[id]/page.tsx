@@ -104,7 +104,7 @@ export default function OrderTrackingPage({
 
     initialLoad();
 
-    // Poll for status updates every 4 seconds
+    // Poll for status updates every 2 seconds
     const interval = setInterval(async () => {
       if (!isSubscribed) return;
       try {
@@ -118,7 +118,7 @@ export default function OrderTrackingPage({
       } catch {
         // Polling error silently handled
       }
-    }, 4000);
+    }, 2000);
 
     return () => {
       isSubscribed = false;

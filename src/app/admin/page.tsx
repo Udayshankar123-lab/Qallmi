@@ -110,7 +110,7 @@ export default function AdminDashboardPage() {
         : "1234";
     const headers = new Headers(init.headers || {});
     headers.set("x-staff-pin", pin);
-    return fetch(input, { ...init, headers });
+    return fetch(input, { ...init, headers, cache: "no-store" });
   };
 
   const fetchOrders = async () => {
@@ -252,7 +252,7 @@ export default function AdminDashboardPage() {
     const interval = setInterval(() => {
       fetchOrders();
       fetchDailyRecords();
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 

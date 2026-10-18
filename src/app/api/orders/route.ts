@@ -28,7 +28,16 @@ export async function GET(request: Request) {
       orders = orders.filter((o) => o.status === status);
     }
 
-    return NextResponse.json({ success: true, orders });
+    return NextResponse.json(
+      { success: true, orders },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to fetch orders";
     return NextResponse.json({ success: false, error: message }, { status: 500 });

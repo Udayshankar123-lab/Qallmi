@@ -30,7 +30,9 @@ export default function OrderTrackerModal() {
 
     const fetchLatestStatus = async () => {
       try {
-        const res = await fetch(`/api/orders/${encodeURIComponent(activeOrder.id)}`);
+        const res = await fetch(`/api/orders/${encodeURIComponent(activeOrder.id)}`, {
+          cache: "no-store",
+        });
         if (res.ok) {
           const data = await res.json();
           if (
@@ -54,7 +56,9 @@ export default function OrderTrackerModal() {
       }
     };
 
-    const interval = setInterval(fetchLatestStatus, 4000);
+    // Immediate status check on open/active
+    fetchLatestStatus();
+    const interval = setInterval(fetchLatestStatus, 2000);
 
     return () => {
       isSubscribed = false;

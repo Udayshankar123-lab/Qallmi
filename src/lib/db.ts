@@ -322,9 +322,14 @@ export async function updateOrderStatus(
 
     lastOrdersBlobRead = Date.now();
     writeLocalFile(ORDERS_FILE, memoryOrders);
-    writeBlobState("orders", memoryOrders).catch((err) => {
-      console.error("[db] Background blob write error on updateOrderStatus:", err);
-    });
+
+    // CRITICAL: Must await so the status update is persisted to cloud before serverless execution ends
+    try {
+      await writeBlobState("orders", memoryOrders);
+    } catch (err) {
+      console.error("[db] Cloud write error on updateOrderStatus:", err);
+    }
+
     return order;
   }
   return null;

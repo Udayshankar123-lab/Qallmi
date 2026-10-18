@@ -16,7 +16,16 @@ export async function GET(
     if (!order) {
       return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
     }
-    return NextResponse.json({ success: true, order });
+    return NextResponse.json(
+      { success: true, order },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to fetch order";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
