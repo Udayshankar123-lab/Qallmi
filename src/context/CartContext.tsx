@@ -72,13 +72,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // Clean the address bar immediately so ?t= or ?table= is never visible or editable
       cleanAddressBar();
 
-      // Check for previously active order
+      // Check for previously active order with strict validation
       const savedOrder = localStorage.getItem("qallmi_active_order");
       if (savedOrder) {
         try {
-          setActiveOrder(JSON.parse(savedOrder));
+          const parsed = JSON.parse(savedOrder);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            parsed.id &&
+            Array.isArray(parsed.items) &&
+            parsed.items.length > 0
+          ) {
+            setActiveOrder(parsed);
+          } else {
+            localStorage.removeItem("qallmi_active_order");
+          }
         } catch {
-          // Ignore parse errors
+          localStorage.removeItem("qallmi_active_order");
         }
       }
     }
@@ -94,12 +105,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSetActiveOrder = (order: Order | null) => {
-    setActiveOrder(order);
-    if (typeof window !== "undefined") {
-      if (order) {
-        localStorage.setItem("qallmi_active_order", JSON.stringify(order));
-      } else {
-        localStorage.removeItem("qallmi_active_order");
+    if (order && order.id && Array.isArray(order.items)) {
+      setActiveOrder(order);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("qallmi_active_order", JSON.stringify(order));
+        } catch {
+          // Ignore storage quota errors
+        }
+      }
+    } else {
+      setActiveOrder(null);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("qallmi_active_order");
+        } catch {
+          // Ignore storage errors
+        }
       }
     }
   };

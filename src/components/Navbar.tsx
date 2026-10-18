@@ -40,7 +40,7 @@ export default function Navbar() {
           </div>
 
           {/* Active order badge if any */}
-          {activeOrder && activeOrder.status !== "completed" && (
+          {activeOrder && activeOrder.id && activeOrder.status && activeOrder.status !== "completed" && (
             <button
               onClick={() => setIsTrackerOpen(true)}
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-[#493126] text-[#C6A46C] border border-[#C6A46C]/40 rounded-full text-xs font-medium hover:border-[#C6A46C] transition-colors"

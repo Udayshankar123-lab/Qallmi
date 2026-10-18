@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { Order, OrderStatus } from "@/types/cafe";
 
+export const dynamic = "force-dynamic";
+
 export default function OrderTrackingPage({
   params,
 }: {
@@ -27,26 +29,39 @@ export default function OrderTrackingPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isSubscribed = true;
+
     async function loadOrder() {
       try {
-        const res = await fetch(`/api/orders/${id}`);
+        if (!id) return;
+        const res = await fetch(`/api/orders/${encodeURIComponent(id)}`);
         const data = await res.json();
-        if (data.success && data.order) {
-          setOrder(data.order);
-        } else {
-          setError(data.error || "Order not found");
+        if (isSubscribed) {
+          if (data.success && data.order && data.order.id && Array.isArray(data.order.items)) {
+            setOrder(data.order);
+            setError(null);
+          } else {
+            setError(data.error || "Order not found");
+          }
         }
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to load order";
-        setError(message);
+        if (isSubscribed) {
+          const message = err instanceof Error ? err.message : "Failed to load order";
+          setError(message);
+        }
       } finally {
-        setLoading(false);
+        if (isSubscribed) {
+          setLoading(false);
+        }
       }
     }
 
     loadOrder();
     const interval = setInterval(loadOrder, 4000);
-    return () => clearInterval(interval);
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
   }, [id]);
 
   const steps: { key: OrderStatus; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
@@ -232,8 +247,8 @@ export default function OrderTrackingPage({
             Ordered Dishes & Drinks
           </h3>
           <div className="divide-y divide-[#F7F2EA] text-xs">
-            {order.items.map((item, i) => (
-              <div key={i} className="py-2.5 flex justify-between items-center">
+            {(order.items || []).map((item, i) => (
+              <div key={item.id || i} className="py-2.5 flex justify-between items-center">
                 <div>
                   <span className="font-bold text-[#241713] mr-1.5">
                     {item.quantity}× {item.name}
@@ -245,7 +260,7 @@ export default function OrderTrackingPage({
                   )}
                 </div>
                 <span className="font-bold text-[#493126] font-serif">
-                  ₹{item.unitPrice * item.quantity}
+                  ₹{(item.unitPrice || 0) * (item.quantity || 1)}
                 </span>
               </div>
             ))}
@@ -254,7 +269,7 @@ export default function OrderTrackingPage({
           <div className="pt-2 border-t border-[#F7F2EA] flex justify-between text-sm font-black text-[#241713]">
             <span>Total Bill (Pay at Counter)</span>
             <span className="font-serif text-lg text-[#493126]">
-              ₹{order.total}
+              ₹{order.total ?? 0}
             </span>
           </div>
         </div>
@@ -266,7 +281,7 @@ export default function OrderTrackingPage({
             className="inline-flex items-center gap-2 px-6 py-3.5 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-2xl text-xs font-black tracking-wider uppercase shadow-xl transition-all active:scale-98"
           >
             <PlusCircle className="w-4 h-4 text-[#C6A46C]" />
-            <span>Order More for Table {order.tableNumber}</span>
+            <span>Order More for Table {order.tableNumber || "01"}</span>
           </Link>
         </div>
       </main>

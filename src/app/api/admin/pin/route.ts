@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const isValid = pin === currentPin || pin === "1234" || pin === "7411";
+      const isValid = String(pin).trim() === String(currentPin).trim();
       return NextResponse.json({ success: true, isValid });
     }
 
@@ -43,8 +43,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify old PIN
-    if (oldPin !== currentPin && oldPin !== "1234" && oldPin !== "7411") {
+    // Verify old PIN strictly against current active PIN
+    if (String(oldPin).trim() !== String(currentPin).trim()) {
       isRateLimited(`pin-verify-${ip}`, 12, 5 * 60 * 1000);
       return NextResponse.json(
         { success: false, error: "Current PIN is incorrect. Please try again." },

@@ -351,8 +351,9 @@ export default function AdminDashboardPage() {
     }
 
     if (!isValid && typeof window !== "undefined") {
+      // Offline fallback only if network request failed completely
       const savedPin = localStorage.getItem("qalbi_staff_pin");
-      if (pin === savedPin || pin === "1234" || pin === "7411") {
+      if (savedPin && pin === savedPin) {
         isValid = true;
       }
     }
@@ -417,7 +418,7 @@ export default function AdminDashboardPage() {
     } catch {
       if (typeof window !== "undefined") {
         const currentSaved = localStorage.getItem("qalbi_staff_pin") || "1234";
-        if (oldPinInput === currentSaved || oldPinInput === "1234" || oldPinInput === "7411") {
+        if (oldPinInput === currentSaved) {
           sessionStorage.setItem("qalbi_staff_pin", newPinInput);
           localStorage.setItem("qalbi_staff_pin", newPinInput);
           setPinChangeSuccess("Security PIN updated successfully!");

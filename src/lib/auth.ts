@@ -34,11 +34,8 @@ export async function verifyStaffAuth(request: Request): Promise<{ authorized: b
 
   const currentPin = await getStaffPin();
 
-  // Allow current custom PIN or master cafe emergency pins
-  const isMatch =
-    submittedPin === currentPin ||
-    submittedPin === "1234" ||
-    submittedPin === "7411";
+  // Strictly enforce current active PIN (no old default key bypass)
+  const isMatch = String(submittedPin).trim() === String(currentPin).trim();
 
   if (!isMatch) {
     // Record failed attempt for rate limiting

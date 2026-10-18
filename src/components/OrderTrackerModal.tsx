@@ -20,29 +20,49 @@ export default function OrderTrackerModal() {
   const [currentOrder, setCurrentOrder] = useState<Order | null>(activeOrder);
 
   useEffect(() => {
-    setCurrentOrder(activeOrder);
+    if (activeOrder && activeOrder.id && Array.isArray(activeOrder.items)) {
+      setCurrentOrder(activeOrder);
+    }
 
-    if (!activeOrder || !isTrackerOpen) return;
+    if (!activeOrder || !activeOrder.id || !isTrackerOpen) return;
 
-    const interval = setInterval(async () => {
+    let isSubscribed = true;
+
+    const fetchLatestStatus = async () => {
       try {
-        const res = await fetch(`/api/orders/${activeOrder.id}`);
+        const res = await fetch(`/api/orders/${encodeURIComponent(activeOrder.id)}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.order) {
+          if (
+            isSubscribed &&
+            data.success &&
+            data.order &&
+            data.order.id &&
+            Array.isArray(data.order.items)
+          ) {
             setCurrentOrder(data.order);
-            setActiveOrder(data.order);
+            if (
+              activeOrder.status !== data.order.status ||
+              activeOrder.paymentStatus !== data.order.paymentStatus
+            ) {
+              setActiveOrder(data.order);
+            }
           }
         }
       } catch {
         // Polling error silently handled
       }
-    }, 4000);
+    };
 
-    return () => clearInterval(interval);
-  }, [activeOrder, isTrackerOpen, setActiveOrder]);
+    const interval = setInterval(fetchLatestStatus, 4000);
 
-  if (!isTrackerOpen || !currentOrder) return null;
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [activeOrder?.id, activeOrder?.status, activeOrder?.paymentStatus, isTrackerOpen]);
+
+  if (!isTrackerOpen || !currentOrder || !currentOrder.id) return null;
 
   const steps: { key: OrderStatus; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
     {
@@ -198,8 +218,8 @@ export default function OrderTrackerModal() {
               Ordered Items
             </h5>
             <div className="divide-y divide-[#F7F2EA] text-xs">
-              {currentOrder.items.map((item, i) => (
-                <div key={i} className="py-2 flex justify-between items-center">
+              {(currentOrder.items || []).map((item, i) => (
+                <div key={item.id || i} className="py-2 flex justify-between items-center">
                   <div>
                     <span className="font-bold text-[#241713] mr-1.5">
                       {item.quantity}× {item.name}
@@ -211,7 +231,7 @@ export default function OrderTrackerModal() {
                     )}
                   </div>
                   <span className="font-bold text-[#493126] font-serif">
-                    ₹{item.unitPrice * item.quantity}
+                    ₹{(item.unitPrice || 0) * (item.quantity || 1)}
                   </span>
                 </div>
               ))}
@@ -220,7 +240,7 @@ export default function OrderTrackerModal() {
             <div className="pt-2 border-t border-[#F7F2EA] flex justify-between text-xs font-black text-[#241713]">
               <span>Total Bill (Pay at Counter)</span>
               <span className="font-serif text-sm text-[#493126]">
-                ₹{currentOrder.total}
+                ₹{currentOrder.total ?? 0}
               </span>
             </div>
           </div>
@@ -233,7 +253,7 @@ export default function OrderTrackerModal() {
             className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-[#241713] hover:bg-[#493126] text-[#F7F2EA] rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-[0.99]"
           >
             <PlusCircle className="w-4 h-4 text-[#C6A46C]" />
-            <span>Order More for Table {currentOrder.tableNumber}</span>
+            <span>Order More for Table {currentOrder.tableNumber || "01"}</span>
           </button>
         </div>
       </div>

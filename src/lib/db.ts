@@ -186,9 +186,18 @@ export async function deleteCategory(id: string): Promise<boolean> {
 
 /* ---------------- ORDERS ---------------- */
 
+let lastOrdersBlobRead = 0;
+const ORDERS_CACHE_TTL = 3000; // 3 seconds in-memory TTL to avoid heavy Vercel Blob network latency
+
 export async function getOrders(): Promise<Order[]> {
   try {
+    const now = Date.now();
+    if (memoryOrders.length > 0 && now - lastOrdersBlobRead < ORDERS_CACHE_TTL) {
+      return memoryOrders;
+    }
+
     const cloudOrders = await readBlobState<Order[] | null>("orders", null);
+    lastOrdersBlobRead = Date.now();
     if (cloudOrders !== null && Array.isArray(cloudOrders)) {
       memoryOrders = cloudOrders;
       writeLocalFile(ORDERS_FILE, cloudOrders);
@@ -197,8 +206,11 @@ export async function getOrders(): Promise<Order[]> {
 
     if (fs.existsSync(ORDERS_FILE)) {
       const data = fs.readFileSync(ORDERS_FILE, "utf-8");
-      memoryOrders = JSON.parse(data);
-      return memoryOrders;
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        memoryOrders = parsed;
+        return memoryOrders;
+      }
     }
     return memoryOrders;
   } catch {
@@ -207,8 +219,22 @@ export async function getOrders(): Promise<Order[]> {
 }
 
 export async function getOrderById(id: string): Promise<Order | undefined> {
+  if (!id) return undefined;
+  const cleanId = String(id).trim().toLowerCase();
+
+  // Check in-memory orders first for immediate 0ms response
+  const inMemory = memoryOrders.find(
+    (o) => o && o.id && String(o.id).trim().toLowerCase() === cleanId
+  );
+  if (inMemory) {
+    return inMemory;
+  }
+
+  // Fallback to fetching orders
   const orders = await getOrders();
-  return orders.find((o) => o.id.toLowerCase() === id.toLowerCase());
+  return orders.find(
+    (o) => o && o.id && String(o.id).trim().toLowerCase() === cleanId
+  );
 }
 
 export async function createOrder(orderInput: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<Order> {
@@ -220,12 +246,19 @@ export async function createOrder(orderInput: Omit<Order, "id" | "createdAt" | "
     updatedAt: new Date().toISOString(),
   };
 
-  const orders = await getOrders();
-  orders.unshift(newOrder);
+  // Ensure current memory orders are loaded
+  if (memoryOrders.length === 0) {
+    await getOrders();
+  }
 
-  memoryOrders = orders;
-  writeLocalFile(ORDERS_FILE, orders);
-  await writeBlobState("orders", orders);
+  memoryOrders.unshift(newOrder);
+  lastOrdersBlobRead = Date.now();
+  writeLocalFile(ORDERS_FILE, memoryOrders);
+
+  // Persist to Vercel blob storage asynchronously so the customer response is instant and never times out
+  writeBlobState("orders", memoryOrders).catch((err) => {
+    console.error("[db] Background blob write error on createOrder:", err);
+  });
 
   return newOrder;
 }
@@ -235,16 +268,30 @@ export async function updateOrderStatus(
   status?: OrderStatus,
   paymentStatus?: PaymentStatus
 ): Promise<Order | null> {
-  const orders = await getOrders();
-  const order = orders.find((o) => o.id.toLowerCase() === id.toLowerCase());
+  if (!id) return null;
+  const cleanId = String(id).trim().toLowerCase();
+
+  let order = memoryOrders.find(
+    (o) => o && o.id && String(o.id).trim().toLowerCase() === cleanId
+  );
+
+  if (!order) {
+    await getOrders();
+    order = memoryOrders.find(
+      (o) => o && o.id && String(o.id).trim().toLowerCase() === cleanId
+    );
+  }
+
   if (order) {
     if (status) order.status = status;
     if (paymentStatus) order.paymentStatus = paymentStatus;
     order.updatedAt = new Date().toISOString();
 
-    memoryOrders = orders;
-    writeLocalFile(ORDERS_FILE, orders);
-    await writeBlobState("orders", orders);
+    lastOrdersBlobRead = Date.now();
+    writeLocalFile(ORDERS_FILE, memoryOrders);
+    writeBlobState("orders", memoryOrders).catch((err) => {
+      console.error("[db] Background blob write error on updateOrderStatus:", err);
+    });
     return order;
   }
   return null;
