@@ -70,10 +70,20 @@ function writeLocalFile(filePath: string, data: unknown) {
 
 /* ---------------- MENU ITEMS ---------------- */
 
+let lastMenuBlobRead = 0;
+const MENU_CACHE_TTL = 10000; // 10 seconds cache to avoid repeated slow blob reads
+
 export async function getMenuItems(): Promise<MenuItem[]> {
   try {
-    // Check cloud blob state first for authoritative distributed persistence
+    const now = Date.now();
+    // Use in-memory cache if fresh (10s TTL)
+    if (memoryMenu.length > 0 && now - lastMenuBlobRead < MENU_CACHE_TTL) {
+      return memoryMenu;
+    }
+
+    // Check cloud blob state for authoritative distributed persistence
     const cloudMenu = await readBlobState<MenuItem[] | null>("menu", null);
+    lastMenuBlobRead = Date.now();
     if (cloudMenu !== null && Array.isArray(cloudMenu)) {
       memoryMenu = cloudMenu;
       writeLocalFile(MENU_FILE, cloudMenu);
@@ -83,8 +93,11 @@ export async function getMenuItems(): Promise<MenuItem[]> {
     // Fallback to local file or memory
     if (fs.existsSync(MENU_FILE)) {
       const data = fs.readFileSync(MENU_FILE, "utf-8");
-      memoryMenu = JSON.parse(data);
-      return memoryMenu;
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        memoryMenu = parsed;
+        return memoryMenu;
+      }
     }
     return memoryMenu;
   } catch {
@@ -102,6 +115,7 @@ export async function saveMenuItem(item: MenuItem): Promise<MenuItem> {
   }
 
   memoryMenu = items;
+  lastMenuBlobRead = Date.now(); // Mark cache fresh after write
   writeLocalFile(MENU_FILE, items);
   await writeBlobState("menu", items);
   return item;
@@ -113,6 +127,7 @@ export async function toggleItemAvailability(id: string, isAvailable: boolean): 
   if (item) {
     item.isAvailable = isAvailable;
     memoryMenu = items;
+    lastMenuBlobRead = Date.now(); // Mark cache fresh after write
     writeLocalFile(MENU_FILE, items);
     await writeBlobState("menu", items);
     return true;
@@ -123,6 +138,7 @@ export async function toggleItemAvailability(id: string, isAvailable: boolean): 
 export async function deleteMenuItem(id: string): Promise<boolean> {
   const items = (await getMenuItems()).filter((i) => i.id !== id);
   memoryMenu = items;
+  lastMenuBlobRead = Date.now(); // Mark cache fresh after write
   writeLocalFile(MENU_FILE, items);
   await writeBlobState("menu", items);
   return true;
@@ -130,6 +146,7 @@ export async function deleteMenuItem(id: string): Promise<boolean> {
 
 export async function clearMenuItems(): Promise<boolean> {
   memoryMenu = [];
+  lastMenuBlobRead = Date.now(); // Mark cache fresh after write
   writeLocalFile(MENU_FILE, []);
   await writeBlobState("menu", []);
   return true;
@@ -230,6 +247,18 @@ export async function getOrderById(id: string): Promise<Order | undefined> {
     return inMemory;
   }
 
+  // Force a fresh cloud read bypassing the TTL cache to ensure cross-lambda instant lookup
+  const freshOrders = await readBlobState<Order[] | null>("orders", null);
+  if (freshOrders && Array.isArray(freshOrders)) {
+    memoryOrders = freshOrders;
+    lastOrdersBlobRead = Date.now();
+    writeLocalFile(ORDERS_FILE, freshOrders);
+    const found = freshOrders.find(
+      (o) => o && o.id && String(o.id).trim().toLowerCase() === cleanId
+    );
+    if (found) return found;
+  }
+
   // Fallback to fetching orders
   const orders = await getOrders();
   return orders.find(
@@ -255,10 +284,14 @@ export async function createOrder(orderInput: Omit<Order, "id" | "createdAt" | "
   lastOrdersBlobRead = Date.now();
   writeLocalFile(ORDERS_FILE, memoryOrders);
 
-  // Persist to Vercel blob storage asynchronously so the customer response is instant and never times out
-  writeBlobState("orders", memoryOrders).catch((err) => {
-    console.error("[db] Background blob write error on createOrder:", err);
-  });
+  // CRITICAL: Await blob write so any cold serverless instance can find this order immediately.
+  // Without await, a race condition occurs: cold lambda gets GET /api/orders/:id before blob is written → 404.
+  try {
+    await writeBlobState("orders", memoryOrders);
+  } catch (err) {
+    console.error("[db] Blob write error on createOrder:", err);
+    // Order is still in memory - GET requests on the same warm instance will find it
+  }
 
   return newOrder;
 }

@@ -31,38 +31,102 @@ export default function OrderTrackingPage({
   useEffect(() => {
     let isSubscribed = true;
 
-    async function loadOrder() {
+    async function loadOrder(retryCount = 0): Promise<boolean> {
       try {
-        if (!id) return;
-        const res = await fetch(`/api/orders/${encodeURIComponent(id)}`);
+        if (!id) return false;
+        const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
+          cache: "no-store",
+        });
         const data = await res.json();
         if (isSubscribed) {
           if (data.success && data.order && data.order.id && Array.isArray(data.order.items)) {
             setOrder(data.order);
             setError(null);
+            return true;
+          } else if (retryCount < 4) {
+            // Order might not be in blob yet due to timing — retry after delay
+            return false;
           } else {
             setError(data.error || "Order not found");
+            return false;
           }
         }
+        return false;
       } catch (err: unknown) {
-        if (isSubscribed) {
+        if (isSubscribed && retryCount >= 4) {
           const message = err instanceof Error ? err.message : "Failed to load order";
           setError(message);
         }
-      } finally {
-        if (isSubscribed) {
-          setLoading(false);
-        }
+        return false;
       }
     }
 
-    loadOrder();
-    const interval = setInterval(loadOrder, 4000);
+    async function initialLoad() {
+      // Try localStorage first for instant display (order was just placed)
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem("qallmi_active_order");
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (
+              parsed &&
+              parsed.id &&
+              String(parsed.id).toUpperCase() === String(id).toUpperCase() &&
+              Array.isArray(parsed.items) &&
+              parsed.items.length > 0
+            ) {
+              if (isSubscribed) {
+                setOrder(parsed);
+                setLoading(false);
+              }
+            }
+          }
+        } catch {
+          // Ignore localStorage errors
+        }
+      }
+
+      // Fetch from API with retries
+      let found = false;
+      for (let attempt = 0; attempt <= 4; attempt++) {
+        if (!isSubscribed) break;
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        found = await loadOrder(attempt);
+        if (found) break;
+      }
+
+      if (isSubscribed) {
+        setLoading(false);
+      }
+    }
+
+    initialLoad();
+
+    // Poll for status updates every 4 seconds
+    const interval = setInterval(async () => {
+      if (!isSubscribed) return;
+      try {
+        const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (isSubscribed && data.success && data.order && data.order.id) {
+          setOrder(data.order);
+        }
+      } catch {
+        // Polling error silently handled
+      }
+    }, 4000);
+
     return () => {
       isSubscribed = false;
       clearInterval(interval);
     };
   }, [id]);
+
+
 
   const steps: { key: OrderStatus; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
     {

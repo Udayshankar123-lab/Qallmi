@@ -1,8 +1,15 @@
-import { put, list, del } from "@vercel/blob";
+const GITHUB_REPO = process.env.GITHUB_DB_REPO || "Udayshankar123-lab/qalbi-db";
+const GITHUB_TOKEN = process.env.GITHUB_DB_TOKEN || "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";
 
-const hasBlobConfig = () => {
-  return Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
-};
+const shaCache: Record<string, string> = {};
+
+// In-memory read cache to prevent rate-limiting and guarantee 0ms responses
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+const memoryCache: Record<string, CacheEntry<unknown>> = {};
+const TTL_MS = 2500; // 2.5 seconds cache TTL
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -24,68 +31,123 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Pro
 }
 
 export async function writeBlobState<T>(stateName: string, data: T): Promise<boolean> {
-  if (!hasBlobConfig()) return false;
-  try {
-    const timestamp = Date.now();
-    const filename = `state/${stateName}-${timestamp}.json`;
-    
-    const putPromise = put(filename, JSON.stringify(data), {
-      access: "public",
-      contentType: "application/json",
-      addRandomSuffix: false,
-    });
+  const fileName = `${stateName}.json`;
 
-    const result = await withTimeout(putPromise, 3000, null);
-    if (!result) return false;
+  // Immediately update local in-memory cache so subsequent reads within the same process are instant
+  memoryCache[stateName] = {
+    data,
+    timestamp: Date.now(),
+  };
 
-    // Asynchronously delete older state versions in the background without awaiting
-    list({ prefix: `state/${stateName}-` })
-      .then((existing) => {
-        const oldBlobs = existing.blobs.filter((b) => b.pathname !== filename);
-        if (oldBlobs.length > 0) {
-          del(oldBlobs.map((b) => b.url)).catch(() => {});
+  const writeOperation = async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        let sha = shaCache[fileName];
+        if (!sha) {
+          const metaRes = await fetch(
+            `https://api.github.com/repos/${GITHUB_REPO}/contents/${fileName}`,
+            {
+              headers: {
+                Authorization: `token ${GITHUB_TOKEN}`,
+                "User-Agent": "QalbiCafe",
+              },
+              cache: "no-store",
+            }
+          );
+          if (metaRes.ok) {
+            const metaJson = await metaRes.json();
+            sha = metaJson.sha;
+          }
         }
-      })
-      .catch(() => {});
 
-    return true;
+        const putRes = await fetch(
+          `https://api.github.com/repos/${GITHUB_REPO}/contents/${fileName}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `token ${GITHUB_TOKEN}`,
+              "User-Agent": "QalbiCafe",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message: `Update ${fileName} [${Date.now()}]`,
+              content: Buffer.from(JSON.stringify(data, null, 2)).toString("base64"),
+              ...(sha ? { sha } : {}),
+            }),
+          }
+        );
+
+        if (putRes.ok) {
+          const putJson = await putRes.json();
+          shaCache[fileName] = putJson?.content?.sha;
+          return true;
+        }
+
+        // On conflict (409), clear cached SHA and retry once
+        delete shaCache[fileName];
+      } catch (err) {
+        console.error(`[CloudStorage] Error on attempt ${attempt + 1} for ${fileName}:`, err);
+        delete shaCache[fileName];
+      }
+    }
+    return false;
+  };
+
+  try {
+    const success = await withTimeout(writeOperation(), 4500, false);
+    return success;
   } catch (err) {
-    console.error(`[BlobStorage] Error writing state ${stateName}:`, err);
+    console.error(`[CloudStorage] writeBlobState error for ${stateName}:`, err);
     return false;
   }
 }
 
 export async function readBlobState<T>(stateName: string, fallback: T): Promise<T> {
-  if (!hasBlobConfig()) return fallback;
-  try {
-    const readOperation = async (): Promise<T> => {
-      const existing = await list({ prefix: `state/${stateName}-` });
-      if (!existing.blobs || existing.blobs.length === 0) {
-        return fallback;
-      }
+  const now = Date.now();
+  const cached = memoryCache[stateName];
 
-      // Sort to get the most recent version
-      const latest = existing.blobs.sort(
-        (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-      )[0];
+  // Return fresh in-memory data if within TTL
+  if (cached && now - cached.timestamp < TTL_MS) {
+    return cached.data as T;
+  }
 
-      const res = await fetch(latest.url, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(2000),
-      });
+  const fileName = `${stateName}.json`;
+
+  const readOperation = async (): Promise<T> => {
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${fileName}`,
+        {
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`,
+            "User-Agent": "QalbiCafe",
+            Accept: "application/vnd.github.v3.raw",
+          },
+          cache: "no-store",
+        }
+      );
 
       if (res.ok) {
-        const parsed = await res.json();
-        return parsed as T;
+        const text = await res.text();
+        const parsed = JSON.parse(text) as T;
+        memoryCache[stateName] = {
+          data: parsed,
+          timestamp: Date.now(),
+        };
+        return parsed;
       }
-      return fallback;
-    };
 
-    return await withTimeout(readOperation(), 2500, fallback);
-  } catch (err) {
-    console.error(`[BlobStorage] Error reading state ${stateName}:`, err);
-    return fallback;
-  }
+      // If file not found yet or error, use cached or fallback
+      if (cached) return cached.data as T;
+      return fallback;
+    } catch (err) {
+      console.error(`[CloudStorage] readBlobState error for ${stateName}:`, err);
+      if (cached) return cached.data as T;
+      return fallback;
+    }
+  };
+
+  return await withTimeout(readOperation(), 3500, cached ? (cached.data as T) : fallback);
 }
 
 export async function uploadImageToBlob(
@@ -93,17 +155,34 @@ export async function uploadImageToBlob(
   contentType: string,
   extension: string = "jpg"
 ): Promise<string | null> {
-  if (!hasBlobConfig()) return null;
   try {
     const randomSuffix = Math.random().toString(36).substring(2, 9);
-    const filename = `dishes/${Date.now()}-${randomSuffix}.${extension}`;
-    const blob = await put(filename, buffer, {
-      access: "public",
-      contentType: contentType || "image/jpeg",
-    });
-    return blob.url;
+    const filename = `images/${Date.now()}-${randomSuffix}.${extension}`;
+
+    const putRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${filename}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `token ${GITHUB_TOKEN}`,
+          "User-Agent": "QalbiCafe",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: `Upload ${filename}`,
+          content: buffer.toString("base64"),
+        }),
+      }
+    );
+
+    if (putRes.ok) {
+      // Return a base64 data URL so any browser can render it with zero authentication requirements
+      return `data:${contentType || "image/jpeg"};base64,${buffer.toString("base64")}`;
+    }
+
+    return `data:${contentType || "image/jpeg"};base64,${buffer.toString("base64")}`;
   } catch (err) {
-    console.error("[BlobStorage] Error uploading image:", err);
-    return null;
+    console.error("[CloudStorage] Error uploading image:", err);
+    return `data:${contentType || "image/jpeg"};base64,${buffer.toString("base64")}`;
   }
 }

@@ -333,9 +333,11 @@ export default function AdminDashboardPage() {
 
   const handlePinSubmit = async (e?: React.FormEvent, customPin?: string) => {
     if (e) e.preventDefault();
-    const pin = customPin !== undefined ? customPin : pinInput;
+    const pin = (customPin !== undefined ? customPin : pinInput).trim();
 
     let isValid = false;
+    let serverResponded = false;
+
     try {
       const res = await fetch("/api/admin/pin", {
         method: "POST",
@@ -343,15 +345,16 @@ export default function AdminDashboardPage() {
         body: JSON.stringify({ action: "verify", pin }),
       });
       const data = await res.json();
+      serverResponded = true;
       if (data.success && data.isValid) {
         isValid = true;
       }
     } catch {
-      // offline / fallback
+      serverResponded = false;
     }
 
-    if (!isValid && typeof window !== "undefined") {
-      // Offline fallback only if network request failed completely
+    // Only if the server was completely unreachable via network, allow emergency offline fallback
+    if (!serverResponded && typeof window !== "undefined") {
       const savedPin = localStorage.getItem("qalbi_staff_pin");
       if (savedPin && pin === savedPin) {
         isValid = true;
@@ -439,6 +442,7 @@ export default function AdminDashboardPage() {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("qalbi_staff_auth");
       sessionStorage.removeItem("qalbi_staff_pin");
+      localStorage.removeItem("qalbi_staff_pin");
     }
     setIsStaffAuthenticated(false);
   };
